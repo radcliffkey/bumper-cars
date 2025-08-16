@@ -1,8 +1,14 @@
 // Assets are generated as tiny base64 PNGs to emulate cozy pixel art.
 // We produce directional car sprites, a wooden floor tile, and a fence tile.
-import { CAR_PIXEL_SIZE, TILE_SIZE, FLOOR_NOISE_GENERATION_ALPHA } from '../config/constants.js';
+import { 
+  CAR_PIXEL_SIZE, 
+  TILE_SIZE, 
+  FLOOR_NOISE_GENERATION_ALPHA,
+  AI_COLORS,
+  PLAYER_COLOR 
+} from '../config/constants.js';
 
-function drawCarFacing(direction, colorHex, size = 32) {
+export function drawCarFacing(direction, colorHex, size = 32) {
   const c = document.createElement('canvas');
   c.width = size;
   c.height = size;
@@ -80,7 +86,15 @@ function drawCarFacing(direction, colorHex, size = 32) {
   return c.toDataURL('image/png');
 }
 
-function shade(hex, percent) {
+// === UTILITY FUNCTIONS ===
+
+/**
+ * Creates a shade or tint of a hex color
+ * @param {string} hex - Hex color string (e.g., '#ff0000')
+ * @param {number} percent - Positive for lighter, negative for darker
+ * @returns {string} Modified hex color
+ */
+export function shade(hex, percent) {
   const num = parseInt(hex.replace('#', ''), 16);
   const r = Math.max(0, Math.min(255, (num >> 16) + Math.round((255 * percent) / 100)));
   const g = Math.max(0, Math.min(255, ((num >> 8) & 0x00ff) + Math.round((255 * percent) / 100)));
@@ -88,7 +102,26 @@ function shade(hex, percent) {
   return `#${(r << 16 | g << 8 | b).toString(16).padStart(6, '0')}`;
 }
 
-function createFenceTile() {
+/**
+ * Creates a canvas element with given dimensions
+ * @param {number} width - Canvas width
+ * @param {number} height - Canvas height
+ * @returns {HTMLCanvasElement} Canvas element
+ */
+export function createCanvas(width, height) {
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  return canvas;
+}
+
+// === TILE CREATION FUNCTIONS ===
+
+/**
+ * Creates a fence tile sprite
+ * @returns {string} Base64 data URL of the fence tile
+ */
+export function createFenceTile() {
   const c = document.createElement('canvas');
   c.width = 16;
   c.height = 16;
@@ -111,7 +144,11 @@ function createFenceTile() {
   return c.toDataURL('image/png');
 }
 
-function createWoodPlankTile32() {
+/**
+ * Creates a wood plank floor tile
+ * @returns {string} Base64 data URL of the wood tile
+ */
+export function createWoodPlankTile32() {
   const c = document.createElement('canvas');
   c.width = TILE_SIZE;
   c.height = TILE_SIZE;
@@ -147,7 +184,12 @@ function createWoodPlankTile32() {
   return c.toDataURL('image/png');
 }
 
-function createNoiseOverlay32(alpha = FLOOR_NOISE_GENERATION_ALPHA) {
+/**
+ * Creates a noise overlay texture for floor tiles
+ * @param {number} alpha - Alpha value for noise pixels (0-1)
+ * @returns {string} Base64 data URL of the noise overlay
+ */
+export function createNoiseOverlay32(alpha = FLOOR_NOISE_GENERATION_ALPHA) {
   const c = document.createElement('canvas');
   c.width = TILE_SIZE;
   c.height = TILE_SIZE;
@@ -164,32 +206,28 @@ function createNoiseOverlay32(alpha = FLOOR_NOISE_GENERATION_ALPHA) {
   return c.toDataURL('image/png');
 }
 
+// === MAIN ASSET GENERATION ===
+
+/**
+ * Generates all pixel art assets for the game
+ * @returns {Object} Object containing all game assets as base64 data URLs
+ */
 export function generatePixelAssets() {
   const assets = {};
 
-  // Player (red) directional sprites
+  // Player directional sprites
   ['up', 'down', 'left', 'right'].forEach((dir) => {
-    assets[`player_${dir}`] = drawCarFacing(dir, '#c64b4b', CAR_PIXEL_SIZE);
+    assets[`player_${dir}`] = drawCarFacing(dir, PLAYER_COLOR, CAR_PIXEL_SIZE);
   });
 
-  const aiColors = [
-    '#4b79d6', // royal blue
-    '#3bbf6b', // emerald
-    '#d6c14b', // gold
-    '#9a4bd6', // violet
-    '#d64b8c', // fuchsia
-    '#4bd6c6', // aqua
-    '#d67f4b', // orange
-    '#6b4bd6', // indigo
-    '#4bd64f', // lime
-    '#4bd6a5', // mint
-  ];
-  aiColors.forEach((color, idx) => {
+  // AI car directional sprites
+  AI_COLORS.forEach((color, idx) => {
     ['up', 'down', 'left', 'right'].forEach((dir) => {
       assets[`ai${idx}_${dir}`] = drawCarFacing(dir, color, CAR_PIXEL_SIZE);
     });
   });
 
+  // Environment assets
   assets.fence_tile = createFenceTile();
   assets.floor_wood = createWoodPlankTile32();
   assets.floor_noise = createNoiseOverlay32();

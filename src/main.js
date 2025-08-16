@@ -1,8 +1,6 @@
 import Phaser from 'phaser';
 import { GameScene } from './scenes/GameScene.js';
-
-const GAME_WIDTH = 800;
-const GAME_HEIGHT = 600;
+import { GAME_WIDTH, GAME_HEIGHT } from './config/constants.js';
 
 const config = {
   type: Phaser.AUTO,

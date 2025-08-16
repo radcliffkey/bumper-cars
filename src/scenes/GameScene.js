@@ -12,6 +12,10 @@ import {
   AI_DIRECTION_INTERVAL_MS_BASE,
   AI_DIRECTION_INTERVAL_MS_JITTER,
   SCORING_COOLDOWN_MS,
+  AI_STUCK_POSITION_TOLERANCE_PX,
+  AI_STUCK_TIME_MS,
+  AI_RESPAWN_CLEARANCE_PX,
+  CAR_BODY_RADIUS,
 } from '../config/constants.js';
 
 const ARENA_PADDING = ARENA_MARGIN * 2; // inner padding for spawning
@@ -108,6 +112,8 @@ export class GameScene extends Phaser.Scene {
     rightWall.setData('nx', -1).setData('ny', 0);
     this.walls.addMultiple([topWall, bottomWall, leftWall, rightWall]);
 
+    // No particle system to avoid potential freezes
+
     // Player
     this.player = createCarSprite(this, width / 2, height / 2, 'player_down');
     this.player.setCollideWorldBounds(true);
@@ -135,6 +141,9 @@ export class GameScene extends Phaser.Scene {
       ai.setData('dirChangeAt', 0);
       ai.setData('base', base);
       ai.setData('lastScoredAt', null);
+      ai.setData('lastPosX', ai.x);
+      ai.setData('lastPosY', ai.y);
+      ai.setData('stuckSinceAt', this.time.now);
       ai.setDepth(2);
       this.aiCars.add(ai);
     }
@@ -444,7 +453,105 @@ export class GameScene extends Phaser.Scene {
         ai.y = maxY;
         ai.setVelocity(ai.body.velocity.x, -Math.abs(ai.body.velocity.y));
       }
+
+      // Stuck detection
+      const lastX = ai.getData('lastPosX');
+      const lastY = ai.getData('lastPosY');
+      const dx = ai.x - lastX;
+      const dy = ai.y - lastY;
+      const distSq = dx * dx + dy * dy;
+      if (distSq > AI_STUCK_POSITION_TOLERANCE_PX * AI_STUCK_POSITION_TOLERANCE_PX) {
+        ai.setData('lastPosX', ai.x);
+        ai.setData('lastPosY', ai.y);
+        ai.setData('stuckSinceAt', now);
+      } else {
+        const stuckSinceAt = ai.getData('stuckSinceAt') || now;
+        if (now - stuckSinceAt >= AI_STUCK_TIME_MS) {
+          this.explodeAndRespawn(ai);
+        }
+      }
     });
+  }
+
+  explodeAndRespawn(ai) {
+    const { x, y } = ai;
+    
+    // Simple visual flash instead of particles
+    const flash = this.add.circle(x, y, 30, 0xffffff, 0.8).setDepth(50);
+    this.tweens.add({
+      targets: flash,
+      alpha: 0,
+      scaleX: 2,
+      scaleY: 2,
+      duration: 300,
+      ease: 'Power2',
+      onComplete: () => flash.destroy()
+    });
+
+    const spawn = this.findFreeSpawnPoint(ai);
+    const angle = Phaser.Math.FloatBetween(0, Math.PI * 2);
+    const aiSpeed = AI_BASE_SPEED;
+    if (ai.body && ai.body.reset) {
+      ai.body.reset(spawn.x, spawn.y);
+    } else {
+      ai.x = spawn.x;
+      ai.y = spawn.y;
+    }
+    ai.setVelocity(Math.cos(angle) * aiSpeed, Math.sin(angle) * aiSpeed);
+    ai.setData('lastPosX', ai.x);
+    ai.setData('lastPosY', ai.y);
+    ai.setData('stuckSinceAt', this.time.now);
+    ai.setData('dirChangeAt', this.time.now + (AI_DIRECTION_INTERVAL_MS_BASE + Phaser.Math.Between(0, AI_DIRECTION_INTERVAL_MS_JITTER)));
+  }
+
+  simpleRespawn(ai) {
+    const spawn = this.findFreeSpawnPoint(ai);
+    const angle = Phaser.Math.FloatBetween(0, Math.PI * 2);
+    const aiSpeed = AI_BASE_SPEED;
+    if (ai.body && ai.body.reset) {
+      ai.body.reset(spawn.x, spawn.y);
+    } else {
+      ai.x = spawn.x;
+      ai.y = spawn.y;
+    }
+    ai.setVelocity(Math.cos(angle) * aiSpeed, Math.sin(angle) * aiSpeed);
+    ai.setData('lastPosX', ai.x);
+    ai.setData('lastPosY', ai.y);
+    ai.setData('stuckSinceAt', this.time.now);
+    ai.setData('dirChangeAt', this.time.now + (AI_DIRECTION_INTERVAL_MS_BASE + Phaser.Math.Between(0, AI_DIRECTION_INTERVAL_MS_JITTER)));
+  }
+
+  findFreeSpawnPoint(excludeSprite) {
+    const padding = ARENA_PADDING;
+    const minX = padding + CAR_BODY_RADIUS;
+    const maxX = this.scale.width - padding - CAR_BODY_RADIUS;
+    const minY = padding + CAR_BODY_RADIUS;
+    const maxY = this.scale.height - padding - CAR_BODY_RADIUS;
+    const clearance = Math.max(AI_RESPAWN_CLEARANCE_PX, CAR_BODY_RADIUS * 2);
+    const clearanceSq = clearance * clearance;
+
+    for (let attempts = 0; attempts < 50; attempts += 1) {
+      const x = Phaser.Math.Between(minX, maxX);
+      const y = Phaser.Math.Between(minY, maxY);
+      let ok = true;
+      if (this.player) {
+        const dx = x - this.player.x;
+        const dy = y - this.player.y;
+        if (dx * dx + dy * dy < clearanceSq) ok = false;
+      }
+      if (ok) {
+        const children = this.aiCars.getChildren ? this.aiCars.getChildren() : [];
+        for (let i = 0; i < children.length; i += 1) {
+          const child = children[i];
+          if (!child || child === excludeSprite) continue;
+          const dx2 = x - child.x;
+          const dy2 = y - child.y;
+          if (dx2 * dx2 + dy2 * dy2 < clearanceSq) { ok = false; break; }
+        }
+      }
+      if (ok) return { x, y };
+    }
+    return { x: Phaser.Math.Between(minX, maxX), y: Phaser.Math.Between(minY, maxY) };
   }
 }
 
