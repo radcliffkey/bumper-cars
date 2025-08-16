@@ -1,0 +1,24 @@
+{
+  "env": {
+    "browser": true,
+    "es2022": true
+  },
+  "extends": ["eslint:recommended"],
+  "parserOptions": {
+    "ecmaVersion": 2022,
+    "sourceType": "module"
+  },
+  "globals": {
+    "Phaser": "readonly"
+  },
+  "rules": {
+    "no-unused-vars": ["warn", { "argsIgnorePattern": "^_" }],
+    "no-undef": "error",
+    "max-len": ["warn", { "code": 120, "tabWidth": 2, "ignoreStrings": true, "ignoreTemplateLiterals": true, "ignoreComments": true }]
+  },
+  "ignorePatterns": [
+    "dist/"
+  ]
+}
+
+
