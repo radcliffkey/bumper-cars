@@ -98,6 +98,11 @@ describe('Constants Configuration', () => {
       // Respawn clearance should be larger than car radius
       expect(constants.AI_RESPAWN_CLEARANCE_PX).toBeGreaterThan(constants.CAR_BODY_RADIUS);
     });
+
+    it('should define a non-negative AI count', () => {
+      expect(constants.AI_COUNT).toBeGreaterThanOrEqual(0);
+      expect(Number.isInteger(constants.AI_COUNT)).toBe(true);
+    });
   });
 
   describe('Visual asset constants', () => {

@@ -16,6 +16,7 @@ import {
   AI_STUCK_TIME_MS,
   AI_RESPAWN_CLEARANCE_PX,
   CAR_BODY_RADIUS,
+  AI_COUNT,
 } from '../config/constants.js';
 
 const ARENA_PADDING = ARENA_MARGIN * 2; // inner padding for spawning
@@ -125,7 +126,7 @@ export class GameScene extends Phaser.Scene {
 
     // AI cars
     this.aiCars = this.physics.add.group();
-    const aiCount = 10;
+    const aiCount = AI_COUNT;
     for (let i = 0; i < aiCount; i += 1) {
       const base = `ai${i % 10}`;
       const ai = createCarSprite(

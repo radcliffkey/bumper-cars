@@ -29,6 +29,7 @@ export const AI_DIRECTION_INTERVAL_MS_JITTER = 1000;
 export const AI_STUCK_POSITION_TOLERANCE_PX = 8; // max drift to still count as "stuck"
 export const AI_STUCK_TIME_MS = 1000; // time staying within tolerance before respawn
 export const AI_RESPAWN_CLEARANCE_PX = 56; // min distance from other cars when respawning
+export const AI_COUNT = 10; // number of AI cars in the arena
 
 // === SCORING ===
 export const SCORING_COOLDOWN_MS = 2000; // min delay between scoring on the same AI car
