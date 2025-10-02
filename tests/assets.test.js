@@ -153,14 +153,15 @@ describe('Asset Utilities', () => {
       expect(assets).toHaveProperty('fence_tile');
       expect(assets).toHaveProperty('floor_wood');
       expect(assets).toHaveProperty('floor_noise');
+      expect(assets).toHaveProperty('bonus_chest');
     });
 
     it('should return an object with expected number of assets', () => {
       const assets = generatePixelAssets();
       const expectedCount = 
-        4 +       // player sprites (4 directions)
+        4 +        // player sprites (4 directions)
         (10 * 4) + // AI sprites (10 colors × 4 directions)
-        3;        // environment assets
+        4;         // environment assets (including bonus_chest)
       expect(Object.keys(assets)).toHaveLength(expectedCount);
     });
   });

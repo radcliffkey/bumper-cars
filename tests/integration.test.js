@@ -35,7 +35,7 @@ describe('Integration Tests', () => {
       // Verify all required asset types are present
       const expectedAssetTypes = [
         'player_up', 'player_down', 'player_left', 'player_right',
-        'fence_tile', 'floor_wood', 'floor_noise'
+        'fence_tile', 'floor_wood', 'floor_noise', 'bonus_chest'
       ];
       
       expectedAssetTypes.forEach(assetKey => {
@@ -58,8 +58,8 @@ describe('Integration Tests', () => {
       const assets = generatePixelAssets();
       const assetCount = Object.keys(assets).length;
       
-      // 4 player sprites + (10 AI colors × 4 directions) + 3 environment assets
-      const expectedCount = 4 + (10 * 4) + 3;
+      // 4 player sprites + (10 AI colors × 4 directions) + 4 environment assets
+      const expectedCount = 4 + (10 * 4) + 4;
       expect(assetCount).toBe(expectedCount);
     });
   });

@@ -8,82 +8,415 @@ import {
   PLAYER_COLOR 
 } from '../config/constants.js';
 
+// In test environments, the mocked 2D context may be missing path APIs.
+// This helper ensures required methods exist as safe no-ops.
+function get2DContext(canvas) {
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return ctx;
+  if (typeof ctx.beginPath !== 'function') ctx.beginPath = () => {};
+  if (typeof ctx.arc !== 'function') ctx.arc = () => {};
+  if (typeof ctx.fill !== 'function') ctx.fill = () => {};
+  if (typeof ctx.stroke !== 'function') ctx.stroke = () => {};
+  if (typeof ctx.closePath !== 'function') ctx.closePath = () => {};
+  return ctx;
+}
+
 export function drawCarFacing(direction, colorHex, size = 32) {
   const c = document.createElement('canvas');
   c.width = size;
   c.height = size;
-  const ctx = c.getContext('2d');
+  const ctx = get2DContext(c);
   const s = size / 32; // scale factor
 
   // base shadow
-  ctx.fillStyle = '#2a1f1a';
-  ctx.fillRect(8 * s, 22 * s, 16 * s, 3 * s);
+  ctx.fillStyle = 'rgba(42, 31, 26, 0.5)';
+  ctx.fillRect(6 * s, 24 * s, 20 * s, 3 * s);
 
-  // wheels
-  ctx.fillStyle = '#2f2f2f';
-  if (direction === 'left' || direction === 'right') {
-    ctx.fillRect(8 * s, 8 * s, 3 * s, 6 * s);
-    ctx.fillRect(8 * s, 18 * s, 3 * s, 6 * s);
-    ctx.fillRect(21 * s, 8 * s, 3 * s, 6 * s);
-    ctx.fillRect(21 * s, 18 * s, 3 * s, 6 * s);
-  } else {
-    ctx.fillRect(6 * s, 10 * s, 6 * s, 3 * s);
-    ctx.fillRect(20 * s, 10 * s, 6 * s, 3 * s);
-    ctx.fillRect(6 * s, 20 * s, 6 * s, 3 * s);
-    ctx.fillRect(20 * s, 20 * s, 6 * s, 3 * s);
-  }
-
-  // body main
-  ctx.fillStyle = colorHex;
-  ctx.fillRect(7 * s, 9 * s, 18 * s, 14 * s);
-
-  // darker shade at bottom/right to add depth
-  ctx.fillStyle = shade(colorHex, -20);
-  ctx.fillRect(7 * s, 20 * s, 18 * s, 3 * s);
-  ctx.fillRect(22 * s, 9 * s, 3 * s, 14 * s);
-
-  // bumper highlights
-  ctx.fillStyle = '#111111';
-  ctx.fillRect(7 * s, 8 * s, 18 * s, 1 * s);
-  ctx.fillRect(7 * s, 23 * s, 18 * s, 1 * s);
-
-  // cockpit/windshield and driver head position varies by direction
-  ctx.fillStyle = '#6bd3ff'; // glass
-  if (direction === 'up') {
-    ctx.fillRect(10 * s, 10 * s, 12 * s, 6 * s);
-    ctx.fillStyle = '#eac39b'; // driver
-    ctx.fillRect(14 * s, 12 * s, 4 * s, 4 * s);
-  } else if (direction === 'down') {
-    ctx.fillRect(10 * s, 16 * s, 12 * s, 6 * s);
-    ctx.fillStyle = '#eac39b';
-    ctx.fillRect(14 * s, 18 * s, 4 * s, 4 * s);
-  } else if (direction === 'left') {
-    ctx.fillRect(9 * s, 12 * s, 10 * s, 8 * s);
-    ctx.fillStyle = '#eac39b';
-    ctx.fillRect(10 * s, 14 * s, 4 * s, 4 * s);
-  } else {
-    ctx.fillRect(13 * s, 12 * s, 10 * s, 8 * s);
-    ctx.fillStyle = '#eac39b';
-    ctx.fillRect(18 * s, 14 * s, 4 * s, 4 * s);
-  }
-
-  // lights
-  ctx.fillStyle = '#ffd86b';
-  if (direction === 'up') {
-    ctx.fillRect(9 * s, 8 * s, 4 * s, 2 * s);
-    ctx.fillRect(19 * s, 8 * s, 4 * s, 2 * s);
-  } else if (direction === 'down') {
-    ctx.fillRect(9 * s, 24 * s, 4 * s, 2 * s);
-    ctx.fillRect(19 * s, 24 * s, 4 * s, 2 * s);
-  } else if (direction === 'left') {
-    ctx.fillRect(6 * s, 12 * s, 2 * s, 4 * s);
-    ctx.fillRect(6 * s, 20 * s, 2 * s, 4 * s);
-  } else {
-    ctx.fillRect(24 * s, 12 * s, 2 * s, 4 * s);
-    ctx.fillRect(24 * s, 20 * s, 2 * s, 4 * s);
+  // Draw bumper car from appropriate angle
+  if (direction === 'left') {
+    drawCarSideViewLeft(ctx, s, colorHex);
+  } else if (direction === 'right') {
+    drawCarSideViewRight(ctx, s, colorHex);
+  } else if (direction === 'up') {
+    drawCarBackView(ctx, s, colorHex);
+  } else { // down
+    drawCarFrontView(ctx, s, colorHex);
   }
 
   return c.toDataURL('image/png');
+}
+
+function drawCarSideViewLeft(ctx, s, colorHex) {
+  // Wheels (visible on side)
+  ctx.fillStyle = '#1a1a1a';
+  // Front wheel
+  ctx.beginPath();
+  ctx.arc(9 * s, 20 * s, 3.5 * s, 0, Math.PI * 2);
+  ctx.fill();
+  // Back wheel
+  ctx.beginPath();
+  ctx.arc(22 * s, 20 * s, 3.5 * s, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Wheel rims
+  ctx.fillStyle = '#3a3a3a';
+  ctx.beginPath();
+  ctx.arc(9 * s, 20 * s, 2 * s, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(22 * s, 20 * s, 2 * s, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Car body lower section (main bumper car body)
+  ctx.fillStyle = colorHex;
+  ctx.fillRect(6 * s, 11 * s, 20 * s, 10 * s);
+  
+  // Rounded front and back
+  ctx.beginPath();
+  ctx.arc(6 * s, 16 * s, 5 * s, Math.PI / 2, Math.PI * 1.5);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(26 * s, 16 * s, 5 * s, Math.PI * 1.5, Math.PI / 2);
+  ctx.fill();
+
+  // Shading on body (darker bottom)
+  ctx.fillStyle = shade(colorHex, -25);
+  ctx.fillRect(6 * s, 18 * s, 20 * s, 3 * s);
+  
+  // Bumper rubber trim
+  ctx.fillStyle = '#2a2a2a';
+  ctx.fillRect(5 * s, 11 * s, 1 * s, 10 * s);
+  ctx.fillRect(26 * s, 11 * s, 1 * s, 10 * s);
+
+  // Highlight on top of body
+  ctx.fillStyle = shade(colorHex, 15);
+  ctx.fillRect(7 * s, 11 * s, 18 * s, 2 * s);
+
+  // Headlight
+  ctx.fillStyle = '#ffd86b';
+  ctx.fillRect(5 * s, 14 * s, 2 * s, 3 * s);
+  ctx.fillStyle = '#fff9e6';
+  ctx.fillRect(5 * s, 15 * s, 1 * s, 1 * s);
+
+  // Seat/cockpit area
+  ctx.fillStyle = '#4a3428';
+  ctx.fillRect(11 * s, 9 * s, 9 * s, 4 * s);
+
+  // Windshield
+  ctx.fillStyle = '#89d5f7';
+  ctx.fillRect(9 * s, 8 * s, 4 * s, 5 * s);
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+  ctx.fillRect(9 * s, 8 * s, 2 * s, 3 * s);
+
+  // Driver's head (large and cartoonish) - facing left
+  ctx.fillStyle = '#f4d2a6'; // skin tone
+  ctx.beginPath();
+  ctx.arc(14 * s, 7 * s, 4 * s, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Hair
+  ctx.fillStyle = '#5c3a21';
+  ctx.fillRect(11 * s, 3 * s, 6 * s, 3 * s);
+  ctx.fillRect(11 * s, 5 * s, 5 * s, 2 * s);
+
+  // Ear (left side)
+  ctx.fillStyle = '#eac39b';
+  ctx.fillRect(10 * s, 7 * s, 2 * s, 2 * s);
+
+  // Eye (simple, looking left)
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(11 * s, 6 * s, 2 * s, 2 * s);
+  ctx.fillStyle = '#2a2a2a';
+  ctx.fillRect(11 * s, 7 * s, 1 * s, 1 * s);
+
+  // Smile
+  ctx.fillStyle = '#8b5a3c';
+  ctx.fillRect(11 * s, 9 * s, 2 * s, 1 * s);
+
+  // Neck
+  ctx.fillStyle = '#f4d2a6';
+  ctx.fillRect(13 * s, 10 * s, 3 * s, 2 * s);
+
+  // Steering wheel
+  ctx.fillStyle = '#4a4a4a';
+  ctx.beginPath();
+  ctx.arc(16 * s, 12 * s, 2 * s, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#2a2a2a';
+  ctx.beginPath();
+  ctx.arc(16 * s, 12 * s, 1 * s, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function drawCarSideViewRight(ctx, s, colorHex) {
+  // Wheels (visible on side)
+  ctx.fillStyle = '#1a1a1a';
+  // Front wheel
+  ctx.beginPath();
+  ctx.arc(23 * s, 20 * s, 3.5 * s, 0, Math.PI * 2);
+  ctx.fill();
+  // Back wheel
+  ctx.beginPath();
+  ctx.arc(10 * s, 20 * s, 3.5 * s, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Wheel rims
+  ctx.fillStyle = '#3a3a3a';
+  ctx.beginPath();
+  ctx.arc(23 * s, 20 * s, 2 * s, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(10 * s, 20 * s, 2 * s, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Car body lower section (main bumper car body)
+  ctx.fillStyle = colorHex;
+  ctx.fillRect(6 * s, 11 * s, 20 * s, 10 * s);
+  
+  // Rounded front and back
+  ctx.beginPath();
+  ctx.arc(26 * s, 16 * s, 5 * s, Math.PI * 1.5, Math.PI / 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(6 * s, 16 * s, 5 * s, Math.PI / 2, Math.PI * 1.5);
+  ctx.fill();
+
+  // Shading on body (darker bottom)
+  ctx.fillStyle = shade(colorHex, -25);
+  ctx.fillRect(6 * s, 18 * s, 20 * s, 3 * s);
+  
+  // Bumper rubber trim
+  ctx.fillStyle = '#2a2a2a';
+  ctx.fillRect(5 * s, 11 * s, 1 * s, 10 * s);
+  ctx.fillRect(26 * s, 11 * s, 1 * s, 10 * s);
+
+  // Highlight on top of body
+  ctx.fillStyle = shade(colorHex, 15);
+  ctx.fillRect(7 * s, 11 * s, 18 * s, 2 * s);
+
+  // Headlight
+  ctx.fillStyle = '#ffd86b';
+  ctx.fillRect(25 * s, 14 * s, 2 * s, 3 * s);
+  ctx.fillStyle = '#fff9e6';
+  ctx.fillRect(26 * s, 15 * s, 1 * s, 1 * s);
+
+  // Seat/cockpit area
+  ctx.fillStyle = '#4a3428';
+  ctx.fillRect(12 * s, 9 * s, 9 * s, 4 * s);
+
+  // Windshield
+  ctx.fillStyle = '#89d5f7';
+  ctx.fillRect(19 * s, 8 * s, 4 * s, 5 * s);
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+  ctx.fillRect(21 * s, 8 * s, 2 * s, 3 * s);
+
+  // Driver's head (large and cartoonish) - facing right
+  ctx.fillStyle = '#f4d2a6'; // skin tone
+  ctx.beginPath();
+  ctx.arc(18 * s, 7 * s, 4 * s, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Hair
+  ctx.fillStyle = '#5c3a21';
+  ctx.fillRect(15 * s, 3 * s, 6 * s, 3 * s);
+  ctx.fillRect(16 * s, 5 * s, 5 * s, 2 * s);
+
+  // Ear (right side)
+  ctx.fillStyle = '#eac39b';
+  ctx.fillRect(20 * s, 7 * s, 2 * s, 2 * s);
+
+  // Eye (simple, looking right)
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(19 * s, 6 * s, 2 * s, 2 * s);
+  ctx.fillStyle = '#2a2a2a';
+  ctx.fillRect(20 * s, 7 * s, 1 * s, 1 * s);
+
+  // Smile
+  ctx.fillStyle = '#8b5a3c';
+  ctx.fillRect(19 * s, 9 * s, 2 * s, 1 * s);
+
+  // Neck
+  ctx.fillStyle = '#f4d2a6';
+  ctx.fillRect(16 * s, 10 * s, 3 * s, 2 * s);
+
+  // Steering wheel
+  ctx.fillStyle = '#4a4a4a';
+  ctx.beginPath();
+  ctx.arc(16 * s, 12 * s, 2 * s, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#2a2a2a';
+  ctx.beginPath();
+  ctx.arc(16 * s, 12 * s, 1 * s, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function drawCarFrontView(ctx, s, colorHex) {
+  // Front wheels (both visible from front)
+  ctx.fillStyle = '#1a1a1a';
+  // Left wheel
+  ctx.fillRect(7 * s, 19 * s, 4 * s, 4 * s);
+  // Right wheel
+  ctx.fillRect(21 * s, 19 * s, 4 * s, 4 * s);
+
+  // Wheel highlights
+  ctx.fillStyle = '#3a3a3a';
+  ctx.fillRect(8 * s, 20 * s, 2 * s, 2 * s);
+  ctx.fillRect(22 * s, 20 * s, 2 * s, 2 * s);
+
+  // Car body - rounded front
+  ctx.fillStyle = colorHex;
+  // Main body
+  ctx.fillRect(7 * s, 12 * s, 18 * s, 10 * s);
+  
+  // Rounded top
+  ctx.beginPath();
+  ctx.arc(16 * s, 12 * s, 9 * s, Math.PI, Math.PI * 2);
+  ctx.fill();
+
+  // Darker shading on sides
+  ctx.fillStyle = shade(colorHex, -25);
+  ctx.fillRect(7 * s, 13 * s, 2 * s, 9 * s);
+  ctx.fillRect(23 * s, 13 * s, 2 * s, 9 * s);
+
+  // Front bumper rubber
+  ctx.fillStyle = '#2a2a2a';
+  ctx.fillRect(8 * s, 21 * s, 16 * s, 1 * s);
+
+  // Highlight on top
+  ctx.fillStyle = shade(colorHex, 15);
+  ctx.fillRect(10 * s, 8 * s, 12 * s, 2 * s);
+
+  // Windshield/cockpit area
+  ctx.fillStyle = '#89d5f7';
+  ctx.fillRect(10 * s, 10 * s, 12 * s, 5 * s);
+  // Windshield reflection
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
+  ctx.fillRect(11 * s, 10 * s, 5 * s, 3 * s);
+
+  // Driver's head (large and cartoonish) - facing forward
+  ctx.fillStyle = '#f4d2a6'; // skin tone
+  ctx.beginPath();
+  ctx.arc(16 * s, 6 * s, 4.5 * s, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Hair
+  ctx.fillStyle = '#5c3a21';
+  ctx.fillRect(12 * s, 2 * s, 8 * s, 3 * s);
+  ctx.fillRect(12 * s, 4 * s, 8 * s, 2 * s);
+  // Hair sides
+  ctx.fillRect(11 * s, 4 * s, 2 * s, 3 * s);
+  ctx.fillRect(19 * s, 4 * s, 2 * s, 3 * s);
+
+  // Both ears (front view)
+  ctx.fillStyle = '#eac39b';
+  ctx.fillRect(11 * s, 6 * s, 2 * s, 2 * s);
+  ctx.fillRect(19 * s, 6 * s, 2 * s, 2 * s);
+
+  // Eyes (both visible, looking forward)
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(13 * s, 5 * s, 2 * s, 2 * s);
+  ctx.fillRect(17 * s, 5 * s, 2 * s, 2 * s);
+  ctx.fillStyle = '#2a2a2a';
+  ctx.fillRect(13 * s, 6 * s, 1 * s, 1 * s);
+  ctx.fillRect(18 * s, 6 * s, 1 * s, 1 * s);
+
+  // Smile
+  ctx.fillStyle = '#8b5a3c';
+  ctx.fillRect(14 * s, 8 * s, 4 * s, 1 * s);
+  ctx.fillRect(13 * s, 9 * s, 1 * s, 1 * s);
+  ctx.fillRect(18 * s, 9 * s, 1 * s, 1 * s);
+
+  // Neck
+  ctx.fillStyle = '#f4d2a6';
+  ctx.fillRect(14 * s, 10 * s, 4 * s, 2 * s);
+
+  // Headlights (both visible from front)
+  ctx.fillStyle = '#ffd86b';
+  ctx.fillRect(9 * s, 20 * s, 3 * s, 2 * s);
+  ctx.fillRect(20 * s, 20 * s, 3 * s, 2 * s);
+  ctx.fillStyle = '#fff9e6';
+  ctx.fillRect(10 * s, 20 * s, 1 * s, 1 * s);
+  ctx.fillRect(21 * s, 20 * s, 1 * s, 1 * s);
+
+  // Steering wheel (partial view)
+  ctx.fillStyle = '#4a4a4a';
+  ctx.fillRect(14 * s, 12 * s, 4 * s, 1 * s);
+}
+
+function drawCarBackView(ctx, s, colorHex) {
+  // Back wheels (both visible from back)
+  ctx.fillStyle = '#1a1a1a';
+  // Left wheel
+  ctx.fillRect(7 * s, 19 * s, 4 * s, 4 * s);
+  // Right wheel
+  ctx.fillRect(21 * s, 19 * s, 4 * s, 4 * s);
+
+  // Wheel highlights
+  ctx.fillStyle = '#3a3a3a';
+  ctx.fillRect(8 * s, 20 * s, 2 * s, 2 * s);
+  ctx.fillRect(22 * s, 20 * s, 2 * s, 2 * s);
+
+  // Car body - rounded back
+  ctx.fillStyle = colorHex;
+  // Main body
+  ctx.fillRect(7 * s, 12 * s, 18 * s, 10 * s);
+  
+  // Rounded top
+  ctx.beginPath();
+  ctx.arc(16 * s, 12 * s, 9 * s, Math.PI, Math.PI * 2);
+  ctx.fill();
+
+  // Darker shading on sides
+  ctx.fillStyle = shade(colorHex, -25);
+  ctx.fillRect(7 * s, 13 * s, 2 * s, 9 * s);
+  ctx.fillRect(23 * s, 13 * s, 2 * s, 9 * s);
+
+  // Back bumper rubber
+  ctx.fillStyle = '#2a2a2a';
+  ctx.fillRect(8 * s, 21 * s, 16 * s, 1 * s);
+
+  // Darker bottom (back view)
+  ctx.fillStyle = shade(colorHex, -30);
+  ctx.fillRect(9 * s, 19 * s, 14 * s, 3 * s);
+
+  // Highlight on top
+  ctx.fillStyle = shade(colorHex, 15);
+  ctx.fillRect(10 * s, 8 * s, 12 * s, 2 * s);
+
+  // Back of seat/headrest
+  ctx.fillStyle = '#4a3428';
+  ctx.fillRect(11 * s, 10 * s, 10 * s, 6 * s);
+  ctx.fillStyle = '#5c4530';
+  ctx.fillRect(12 * s, 11 * s, 8 * s, 2 * s);
+
+  // Driver's head (back of head) - large and cartoonish
+  ctx.fillStyle = '#f4d2a6'; // skin tone
+  ctx.beginPath();
+  ctx.arc(16 * s, 6 * s, 4.5 * s, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Hair (back of head)
+  ctx.fillStyle = '#5c3a21';
+  ctx.fillRect(12 * s, 2 * s, 8 * s, 3 * s);
+  ctx.fillRect(12 * s, 4 * s, 8 * s, 3 * s);
+  ctx.fillRect(11 * s, 4 * s, 10 * s, 4 * s);
+
+  // Ears visible from back
+  ctx.fillStyle = '#eac39b';
+  ctx.fillRect(11 * s, 6 * s, 2 * s, 2 * s);
+  ctx.fillRect(19 * s, 6 * s, 2 * s, 2 * s);
+
+  // Neck from back
+  ctx.fillStyle = '#f4d2a6';
+  ctx.fillRect(14 * s, 9 * s, 4 * s, 3 * s);
+
+  // Tail/brake lights (both visible from back)
+  ctx.fillStyle = '#ff4444';
+  ctx.fillRect(9 * s, 20 * s, 3 * s, 2 * s);
+  ctx.fillRect(20 * s, 20 * s, 3 * s, 2 * s);
+  ctx.fillStyle = '#ff8888';
+  ctx.fillRect(10 * s, 20 * s, 1 * s, 1 * s);
+  ctx.fillRect(21 * s, 20 * s, 1 * s, 1 * s);
 }
 
 // === UTILITY FUNCTIONS ===
@@ -125,7 +458,7 @@ export function createFenceTile() {
   const c = document.createElement('canvas');
   c.width = 16;
   c.height = 16;
-  const ctx = c.getContext('2d');
+  const ctx = get2DContext(c);
   // background dirt edge
   ctx.fillStyle = '#5b3f2f';
   ctx.fillRect(0, 0, 16, 16);
@@ -152,7 +485,7 @@ export function createWoodPlankTile32() {
   const c = document.createElement('canvas');
   c.width = TILE_SIZE;
   c.height = TILE_SIZE;
-  const ctx = c.getContext('2d');
+  const ctx = get2DContext(c);
   // background
   ctx.fillStyle = '#6f4f3b';
   ctx.fillRect(0, 0, TILE_SIZE, TILE_SIZE);
@@ -193,7 +526,7 @@ export function createNoiseOverlay32(alpha = FLOOR_NOISE_GENERATION_ALPHA) {
   const c = document.createElement('canvas');
   c.width = TILE_SIZE;
   c.height = TILE_SIZE;
-  const ctx = c.getContext('2d');
+  const ctx = get2DContext(c);
   const imageData = ctx.createImageData(TILE_SIZE, TILE_SIZE);
   for (let i = 0; i < imageData.data.length; i += 4) {
     const v = Math.random() < 0.15 ? 0 : 255; // sparse dark specks
@@ -203,6 +536,56 @@ export function createNoiseOverlay32(alpha = FLOOR_NOISE_GENERATION_ALPHA) {
     imageData.data[i + 3] = Math.random() < 0.15 ? Math.floor(255 * alpha) : 0;
   }
   ctx.putImageData(imageData, 0, 0);
+  return c.toDataURL('image/png');
+}
+
+/**
+ * Creates a bonus chest sprite
+ * @returns {string} Base64 data URL of the chest sprite
+ */
+export function createBonusChest() {
+  const c = document.createElement('canvas');
+  const size = 32;
+  c.width = size;
+  c.height = size;
+  const ctx = get2DContext(c);
+  
+  // Shadow
+  ctx.fillStyle = '#2a1f1a';
+  ctx.fillRect(6, 26, 20, 3);
+  
+  // Bottom half (chest base)
+  ctx.fillStyle = '#8b6914';
+  ctx.fillRect(6, 16, 20, 10);
+  
+  // Top half (chest lid)
+  ctx.fillStyle = '#b8941f';
+  ctx.fillRect(6, 8, 20, 8);
+  
+  // Lid highlight
+  ctx.fillStyle = '#d4af37';
+  ctx.fillRect(7, 8, 18, 2);
+  
+  // Lock/clasp
+  ctx.fillStyle = '#4a4a4a';
+  ctx.fillRect(14, 14, 4, 6);
+  
+  // Lock highlight
+  ctx.fillStyle = '#707070';
+  ctx.fillRect(15, 15, 2, 2);
+  
+  // Metal bands
+  ctx.fillStyle = '#4a4a4a';
+  ctx.fillRect(6, 12, 20, 1);
+  ctx.fillRect(6, 20, 20, 1);
+  ctx.fillRect(10, 8, 1, 18);
+  ctx.fillRect(21, 8, 1, 18);
+  
+  // Sparkle effect
+  ctx.fillStyle = '#ffd700';
+  ctx.fillRect(8, 10, 2, 2);
+  ctx.fillRect(22, 18, 2, 2);
+  
   return c.toDataURL('image/png');
 }
 
@@ -231,6 +614,9 @@ export function generatePixelAssets() {
   assets.fence_tile = createFenceTile();
   assets.floor_wood = createWoodPlankTile32();
   assets.floor_noise = createNoiseOverlay32();
+  
+  // Bonus chest
+  assets.bonus_chest = createBonusChest();
 
   return assets;
 }

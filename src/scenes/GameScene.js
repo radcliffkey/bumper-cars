@@ -17,6 +17,11 @@ import {
   AI_RESPAWN_CLEARANCE_PX,
   CAR_BODY_RADIUS,
   AI_COUNT,
+  CHEST_SPAWN_INTERVAL_MS,
+  CHEST_BODY_RADIUS,
+  POWERUP_DURATION_MS,
+  POWERUP_SPEED_MULTIPLIER,
+  POWERUP_RECOIL_MULTIPLIER,
 } from '../config/constants.js';
 
 const ARENA_PADDING = ARENA_MARGIN * 2; // inner padding for spawning
@@ -30,6 +35,18 @@ export class GameScene extends Phaser.Scene {
     this.player = null;
     this.aiCars = null;
     this.walls = null;
+    this.isPaused = false;
+    this.timerEvent = null;
+    this.pauseText = null;
+    this.keyP = null;
+    this.keyR = null;
+    this.controlsHint = null;
+    this.pauseDim = null;
+    this.pauseStartedAt = null;
+    this.bonusChest = null;
+    this.chestSpawnTimer = null;
+    this.playerPowerupActive = false;
+    this.playerPowerupEndTime = null;
   }
 
   preload() {
@@ -48,6 +65,11 @@ export class GameScene extends Phaser.Scene {
     this.score = 0;
     this.timeLeft = GAME_DURATION_SECONDS;
     this.gameOver = false;
+    this.isPaused = false;
+    this.pauseStartedAt = null;
+    this.bonusChest = null;
+    this.playerPowerupActive = false;
+    this.playerPowerupEndTime = null;
 
     // Floor: layered wood + subtle noise for texture
     const floor = this.add.tileSprite(0, 0, width, height, 'floor_wood').setOrigin(0, 0);
@@ -155,6 +177,14 @@ export class GameScene extends Phaser.Scene {
     // Apply billiard-like impulse transfer for car-to-car collisions
     this.physics.add.collider(this.player, this.aiCars, this.handleCarCollision, undefined, this);
     this.physics.add.collider(this.aiCars, this.aiCars, this.handleCarCollision, undefined, this);
+    
+    // Bonus chest spawn timer
+    this.chestSpawnTimer = this.time.addEvent({
+      delay: CHEST_SPAWN_INTERVAL_MS,
+      loop: true,
+      callback: this.spawnBonusChest,
+      callbackScope: this
+    });
 
     // UI
     this.scoreText = this.add.text(12, 8, 'Score: 0', {
@@ -165,7 +195,7 @@ export class GameScene extends Phaser.Scene {
       strokeThickness: 2,
       padding: { x: 2, y: 2 },
     }).setDepth(100).setScrollFactor(0);
-    this.timerText = this.add.text(width - 160, 8, 'Time: 60', {
+    this.timerText = this.add.text(width - 160, 8, `Time: ${GAME_DURATION_SECONDS}`, {
       fontFamily: UI_FONT_FAMILY,
       fontSize: '12px',
       color: '#ffe6a7',
@@ -174,7 +204,45 @@ export class GameScene extends Phaser.Scene {
       padding: { x: 2, y: 2 },
     }).setDepth(100).setScrollFactor(0);
 
-    this.time.addEvent({ delay: 1000, loop: true, callback: this.tickTimer, callbackScope: this });
+    this.timerEvent = this.time.addEvent({ delay: 1000, loop: true, callback: this.tickTimer, callbackScope: this });
+
+    // Pause/Resume and Restart controls
+    this.keyP = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.P);
+    this.keyR = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.R);
+    // Controls hint (top-center)
+    this.controlsHint = this.add.text(
+      width / 2,
+      8,
+      'Arrows: Drive   P: Pause   R: Restart',
+      {
+        fontFamily: UI_FONT_FAMILY,
+        fontSize: '10px',
+        color: '#ffe6a7',
+        stroke: '#5a3e2b',
+        strokeThickness: 2,
+        padding: { x: 2, y: 2 },
+      },
+    ).setOrigin(0.5, 0).setDepth(100).setScrollFactor(0);
+    // Pause overlay dimmer
+    this.pauseDim = this.add.rectangle(0, 0, width, height, 0x000000, 0.45)
+      .setOrigin(0, 0)
+      .setDepth(290)
+      .setVisible(false);
+
+    this.pauseText = this.add.text(
+      width / 2,
+      height / 2,
+      'Paused\nP: Resume\nR: Restart',
+      {
+        fontFamily: UI_FONT_FAMILY,
+        fontSize: 18,
+        color: '#fff5d6',
+        align: 'center',
+        stroke: '#5a3e2b',
+        strokeThickness: 3,
+        padding: { x: 4, y: 4 },
+      },
+    ).setOrigin(0.5).setDepth(300).setVisible(false);
 
     // Respond to world bounds just in case; pick a new inward direction
     this.physics.world.on('worldbounds', (body) => {
@@ -221,6 +289,12 @@ export class GameScene extends Phaser.Scene {
     ).setOrigin(0.5).setDepth(200);
     this.player.setVelocity(0, 0);
     this.aiCars.children.iterate((ai) => ai.setVelocity(0, 0));
+    
+    // Clean up chest
+    if (this.bonusChest) {
+      this.bonusChest.destroy();
+      this.bonusChest = null;
+    }
 
     // Allow quick restart using Space or Enter
     this.input.keyboard.once('keydown-SPACE', () => {
@@ -229,6 +303,140 @@ export class GameScene extends Phaser.Scene {
     this.input.keyboard.once('keydown-ENTER', () => {
       this.scene.restart();
     });
+  }
+
+  togglePause() {
+    if (this.gameOver) return;
+    this.isPaused = !this.isPaused;
+    if (this.isPaused) {
+      this.pauseStartedAt = this.time.now;
+      this.physics.world.pause();
+      if (this.timerEvent) this.timerEvent.paused = true;
+      if (this.chestSpawnTimer) this.chestSpawnTimer.paused = true;
+      this.pauseDim.setVisible(true);
+      this.pauseText.setVisible(true);
+      if (this.tweens && this.tweens.pauseAll) this.tweens.pauseAll();
+      // Stop current velocities so cars do not drift visually
+      if (this.player) this.player.setVelocity(0, 0);
+      if (this.aiCars) this.aiCars.children.iterate((ai) => ai && ai.setVelocity(0, 0));
+    } else {
+      this.physics.world.resume();
+      if (this.timerEvent) this.timerEvent.paused = false;
+      if (this.chestSpawnTimer) this.chestSpawnTimer.paused = false;
+      this.pauseDim.setVisible(false);
+      this.pauseText.setVisible(false);
+      if (this.tweens && this.tweens.resumeAll) this.tweens.resumeAll();
+
+      // Shift AI timers and powerup timer by the paused duration so they don't trigger immediately
+      const pausedDelta = Math.max(0, this.time.now - (this.pauseStartedAt || this.time.now));
+      if (pausedDelta > 0) {
+        if (this.aiCars) {
+          this.aiCars.children.iterate((ai) => {
+            if (!ai) return;
+            const stuckSinceAt = ai.getData && ai.getData('stuckSinceAt');
+            if (typeof stuckSinceAt === 'number') ai.setData('stuckSinceAt', stuckSinceAt + pausedDelta);
+            const dirChangeAt = ai.getData && ai.getData('dirChangeAt');
+            if (typeof dirChangeAt === 'number') ai.setData('dirChangeAt', dirChangeAt + pausedDelta);
+            const lastScoredAt = ai.getData && ai.getData('lastScoredAt');
+            if (typeof lastScoredAt === 'number') ai.setData('lastScoredAt', lastScoredAt + pausedDelta);
+          });
+        }
+        if (this.playerPowerupActive && this.playerPowerupEndTime) {
+          this.playerPowerupEndTime += pausedDelta;
+        }
+      }
+      this.pauseStartedAt = null;
+    }
+  }
+
+  spawnBonusChest() {
+    if (this.gameOver || this.isPaused) return;
+    
+    // Remove existing chest if any
+    if (this.bonusChest) {
+      this.bonusChest.destroy();
+      this.bonusChest = null;
+    }
+    
+    // Find a random position in the arena
+    const padding = ARENA_PADDING;
+    const x = Phaser.Math.Between(padding + 32, this.scale.width - padding - 32);
+    const y = Phaser.Math.Between(padding + 32, this.scale.height - padding - 32);
+    
+    // Create the chest sprite
+    this.bonusChest = this.physics.add.sprite(x, y, 'bonus_chest');
+    this.bonusChest.setCircle(CHEST_BODY_RADIUS, 0, 0);
+    this.bonusChest.setDepth(1.5);
+    this.bonusChest.setImmovable(true);
+    
+    // Add a subtle floating animation
+    this.tweens.add({
+      targets: this.bonusChest,
+      y: y - 5,
+      duration: 1000,
+      yoyo: true,
+      repeat: -1,
+      ease: 'Sine.easeInOut'
+    });
+    
+    // Add a glowing pulse effect
+    this.tweens.add({
+      targets: this.bonusChest,
+      alpha: 0.7,
+      duration: 800,
+      yoyo: true,
+      repeat: -1,
+      ease: 'Sine.easeInOut'
+    });
+    
+    // Add collision with player
+    this.physics.add.overlap(this.player, this.bonusChest, this.collectChest, undefined, this);
+  }
+  
+  collectChest() {
+    if (!this.bonusChest || this.playerPowerupActive || this.isPaused) return;
+    
+    // Visual effect: explosion of particles
+    const x = this.bonusChest.x;
+    const y = this.bonusChest.y;
+    
+    // Create multiple flash circles expanding outward
+    for (let i = 0; i < 8; i++) {
+      const angle = (Math.PI * 2 * i) / 8;
+      const particle = this.add.circle(x, y, 4, 0xffd700, 1).setDepth(100);
+      this.tweens.add({
+        targets: particle,
+        x: x + Math.cos(angle) * 40,
+        y: y + Math.sin(angle) * 40,
+        alpha: 0,
+        duration: 500,
+        ease: 'Power2',
+        onComplete: () => particle.destroy()
+      });
+    }
+    
+    // Central burst effect
+    const burst = this.add.circle(x, y, 20, 0xffd700, 0.8).setDepth(100);
+    this.tweens.add({
+      targets: burst,
+      alpha: 0,
+      scaleX: 3,
+      scaleY: 3,
+      duration: 400,
+      ease: 'Power2',
+      onComplete: () => burst.destroy()
+    });
+    
+    // Remove chest
+    this.bonusChest.destroy();
+    this.bonusChest = null;
+    
+    // Activate powerup
+    this.playerPowerupActive = true;
+    this.playerPowerupEndTime = this.time.now + POWERUP_DURATION_MS;
+    
+    // Visual indicator: slight tint on player
+    this.player.setTint(0xffdd44);
   }
 
   handleCarCollision(a, b) {
@@ -264,7 +472,13 @@ export class GameScene extends Phaser.Scene {
       const pvx = playerObj.body.velocity.x || 0;
       const pvy = playerObj.body.velocity.y || 0;
       const playerSpeed = Math.sqrt(pvx * pvx + pvy * pvy);
-      const recoil = Math.max(RECOIL_FORCE, playerSpeed * 1.1);
+      let recoil = Math.max(RECOIL_FORCE, playerSpeed * 1.1);
+      
+      // Apply powerup multiplier if active
+      if (this.playerPowerupActive) {
+        recoil *= POWERUP_RECOIL_MULTIPLIER;
+      }
+      
       if (p2a_lenSq > 0) {
         const p2a_len = Math.sqrt(p2a_lenSq);
         const pnx = p2a_dx / p2a_len;
@@ -396,10 +610,23 @@ export class GameScene extends Phaser.Scene {
   }
 
   update(time, _delta) {
-    if (this.gameOver) return;
+    // Handle pause/resume and restart keys
+    if (this.keyP && Phaser.Input.Keyboard.JustDown(this.keyP)) this.togglePause();
+    if (this.keyR && Phaser.Input.Keyboard.JustDown(this.keyR)) this.scene.restart();
 
-    // player controls
-    const speed = PLAYER_MAX_SPEED;
+    if (this.gameOver || this.isPaused) return;
+    
+    // Check if powerup has expired
+    if (this.playerPowerupActive && time >= this.playerPowerupEndTime) {
+      this.playerPowerupActive = false;
+      this.player.clearTint();
+    }
+
+    // player controls with powerup speed boost
+    let speed = PLAYER_MAX_SPEED;
+    if (this.playerPowerupActive) {
+      speed *= POWERUP_SPEED_MULTIPLIER;
+    }
     let vx = 0;
     let vy = 0;
     if (this.cursors.left.isDown) vx -= speed;

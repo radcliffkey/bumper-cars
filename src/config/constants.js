@@ -34,6 +34,13 @@ export const AI_COUNT = 10; // number of AI cars in the arena
 // === SCORING ===
 export const SCORING_COOLDOWN_MS = 2000; // min delay between scoring on the same AI car
 
+// === BONUS CHESTS ===
+export const CHEST_SPAWN_INTERVAL_MS = 10000; // spawn a chest every 10 seconds
+export const CHEST_BODY_RADIUS = 16; // collision radius for chest
+export const POWERUP_DURATION_MS = 5000; // how long powerup effects last
+export const POWERUP_SPEED_MULTIPLIER = 1.5; // speed boost multiplier
+export const POWERUP_RECOIL_MULTIPLIER = 1.8; // stronger bumping multiplier
+
 // === VISUAL ASSETS ===
 export const TILE_SIZE = 32; // wood/noise tile size
 export const FLOOR_NOISE_GENERATION_ALPHA = 0.2; // per-pixel alpha when generating noise texture
@@ -45,16 +52,16 @@ export const UI_FONT_FAMILY = '"Press Start 2P", monospace';
 // === COLORS ===
 export const AI_COLORS = [
   '#4b79d6', // royal blue
-  '#3bbf6b', // emerald
-  '#d6c14b', // gold
-  '#9a4bd6', // violet
-  '#d64b8c', // fuchsia
-  '#4bd6c6', // aqua
-  '#d67f4b', // orange
-  '#6b4bd6', // indigo
-  '#4bd64f', // lime
-  '#4bd6a5', // mint
+  '#22cc44', // bright green
+  '#ffdd33', // bright yellow
+  '#9933ff', // deep purple
+  '#ff3399', // hot pink
+  '#00dddd', // cyan
+  '#ff8833', // bright orange
+  '#2244aa', // navy blue
+  '#88ff44', // lime green
+  '#8b5a3c', // brown
 ];
 
-export const PLAYER_COLOR = '#c64b4b'; // red
+export const PLAYER_COLOR = '#ff2222'; // bright red
 
