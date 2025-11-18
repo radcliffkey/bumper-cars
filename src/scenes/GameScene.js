@@ -12,6 +12,7 @@ import {
   AI_DIRECTION_INTERVAL_MS_BASE,
   AI_DIRECTION_INTERVAL_MS_JITTER,
   SCORING_COOLDOWN_MS,
+  SHAKE_COOLDOWN_MS,
   AI_STUCK_POSITION_TOLERANCE_PX,
   AI_STUCK_TIME_MS,
   AI_RESPAWN_CLEARANCE_PX,
@@ -70,6 +71,7 @@ export class GameScene extends Phaser.Scene {
     this.bonusChest = null;
     this.playerPowerupActive = false;
     this.playerPowerupEndTime = null;
+    this.lastShakeAt = 0;
 
     // Floor: layered wood + subtle noise for texture
     const floor = this.add.tileSprite(0, 0, width, height, 'floor_wood').setOrigin(0, 0);
@@ -463,6 +465,13 @@ export class GameScene extends Phaser.Scene {
 
     // If a player is involved, use strong impulse (fling effect)
     if ((aIsPlayer && bIsAi) || (bIsPlayer && aIsAi)) {
+      // Screen shake effect for player collisions, with cooldown to prevent continuous shaking
+      const now = this.time.now;
+      if (now - this.lastShakeAt > SHAKE_COOLDOWN_MS) {
+        this.cameras.main.shake(150, 0.015);
+        this.lastShakeAt = now;
+      }
+
       const playerObj = aIsPlayer ? a : b;
       const aiObj = aIsPlayer ? b : a;
       const p2a_dx = aiObj.x - playerObj.x;

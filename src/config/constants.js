@@ -31,8 +31,10 @@ export const AI_STUCK_TIME_MS = 1000; // time staying within tolerance before re
 export const AI_RESPAWN_CLEARANCE_PX = 56; // min distance from other cars when respawning
 export const AI_COUNT = 10; // number of AI cars in the arena
 
-// === SCORING ===
+// === SCORING & FEEDBACK ===
 export const SCORING_COOLDOWN_MS = 2000; // min delay between scoring on the same AI car
+export const SHAKE_COOLDOWN_MS = 500; // min delay between screen shakes to avoid jitter
+
 
 // === BONUS CHESTS ===
 export const CHEST_SPAWN_INTERVAL_MS = 10000; // spawn a chest every 10 seconds

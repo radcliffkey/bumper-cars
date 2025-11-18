@@ -13,7 +13,7 @@ vi.hoisted(() => {
 });
 
 import { GameScene } from '../src/scenes/GameScene.js';
-import { RECOIL_FORCE, SCORING_COOLDOWN_MS } from '../src/config/constants.js';
+import { RECOIL_FORCE, SCORING_COOLDOWN_MS, SHAKE_COOLDOWN_MS } from '../src/config/constants.js';
 
 function createMockCar({ x, y, vx = 0, vy = 0, isAi = false }) {
   let data = new Map();
@@ -55,6 +55,12 @@ describe('Collision Handlers', () => {
     scene.scale = { width: 800, height: 600 };
     scene.score = 0;
     scene.scoreText = { setText: vi.fn() };
+    scene.cameras = {
+      main: {
+        shake: vi.fn()
+      }
+    };
+    scene.lastShakeAt = 0;
   });
 
   describe('handleWallCollision', () => {
@@ -88,6 +94,7 @@ describe('Collision Handlers', () => {
       expect(ai.setVelocity).toHaveBeenCalled();
       expect(scene.score).toBe(1);
       expect(scene.scoreText.setText).toHaveBeenCalledWith('Score: 1');
+      expect(scene.cameras.main.shake).toHaveBeenCalledWith(150, 0.015);
 
       const lastHit = ai.getData('lastScoredAt');
       expect(typeof lastHit).toBe('number');
@@ -96,7 +103,17 @@ describe('Collision Handlers', () => {
       scene.handleCarCollision(player, ai);
       expect(scene.score).toBe(1);
 
-      // Advance time past cooldown and collide again
+      // Immediate second collision should NOT shake again (cooldown)
+      scene.cameras.main.shake.mockClear();
+      scene.handleCarCollision(player, ai);
+      expect(scene.cameras.main.shake).not.toHaveBeenCalled();
+
+      // Advance time past shake cooldown but still within score cooldown
+      scene.time.now += SHAKE_COOLDOWN_MS + 1;
+      scene.handleCarCollision(player, ai);
+      expect(scene.cameras.main.shake).toHaveBeenCalledWith(150, 0.015);
+
+      // Advance time past scoring cooldown and collide again
       scene.time.now += SCORING_COOLDOWN_MS + 1;
       scene.handleCarCollision(player, ai);
       expect(scene.score).toBe(2);
