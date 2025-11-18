@@ -1,81 +1,54 @@
-Bumper Cars game
+# Bumper Cars Project Context
 
-## Objective
+## Project Overview
+"Bumper Cars" is a browser-based arcade game built with **Phaser 3**. It features a "cozy" pixel art aesthetic inspired by Stardew Valley. The game involves driving a bumper car in an enclosed arena, bumping into AI cars to score points within a time limit.
 
-Create a simple, browser-based bumper car game running in a browser. The game's graphics should emulate the pixel art style of Stardew Valley.
+## Tech Stack
+- **Runtime:** Browser (Vanilla JS + Phaser 3)
+- **Build Tool:** Vite
+- **Testing:** Vitest
+- **Linting:** ESLint
 
-Project Title: "Bumper Cars"
+## Key Commands
+- **Start Dev Server:** `npm run dev` (runs on http://localhost:5173)
+- **Run Tests:** `npm test` (runs Vitest with coverage)
+- **Lint Code:** `npm run lint`
 
-## Step-by-Step Instructions:
+## Project Structure
+- `src/`
+  - `config/` - Constants and configuration (`constants.js`)
+  - `logic/` - Pure game logic, decoupled from Phaser for easier testing (`gameLogic.js`)
+  - `scenes/` - Phaser Scenes (e.g., `GameScene.js` handles the main loop, input, and physics)
+  - `sprites/` - Phaser GameObjects/Sprites (`Car.js`)
+  - `utils/` - Helpers, specifically **runtime asset generation** (`assets.js`)
+  - `main.js` - Game entry point and config
+- `tests/` - Unit and integration tests mirroring the src structure
 
-### Step 1: Game Concept & Core Loop
+## Architectural Patterns
+1.  **Runtime Asset Generation:**
+    -   There are NO external image files. All assets (cars, floor, fences) are generated programmatically via Canvas API in `src/utils/assets.js` and loaded as base64 textures.
+    -   **Do not add static image files.** Modify `assets.js` to change visuals.
 
-The player controls a single bumper car in an enclosed arena.
+2.  **Logic Separation:**
+    -   Core math and scoring logic reside in `src/logic/gameLogic.js`.
+    -   `GameScene.js` handles the Phaser-specific implementation (physics, input, rendering).
+    -   Keep logic pure where possible to facilitate testing.
 
-Several AI-controlled bumper cars will move around the arena.
+3.  **Physics:**
+    -   Uses **Phaser Arcade Physics**.
+    -   Custom collision resolution (`handleCarCollision` in `GameScene.js`) implements billiard-like bounce physics with vector math, rather than relying solely on Arcade Physics default bounce.
 
-The objective is to bump into as many AI cars as possible within a 60-second time limit.
+4.  **State Management:**
+    -   Game state (score, time, paused) is managed directly within `GameScene`.
 
-Each successful bump awards the player one point. There should be a time delay before the player is able to get another point for hitting the same car. 
+## Code Style & Conventions
+-   **ES Modules:** Use `import`/`export` syntax.
+-   **Formatting:** Follow standard JS conventions. Semicolons are used.
+-   **Variables:** `const` for constants, `let` for mutables. Avoid `var`.
+-   **Comments:** JSDoc style for functions is encouraged but not strictly enforced if code is self-explanatory.
+-   **Linter:** Ensure code passes `npm run lint` before finishing tasks.
 
-### Step 2: Visual Style & Asset Generation
-
-Aesthetic: The entire game must have a 16-bit pixel art style, directly inspired by Stardew Valley.
-
-Color Palette: Use a warm, slightly saturated color palette reminiscent of the outdoor environments in Stardew Valley. Think earthy browns for the floor, vibrant colors for the cars, and soft greens or blues for the arena walls.
-
-Player Car: Generate a pixel art sprite for the player's bumper car (e.g., a classic red color with a friendly, slightly rounded design). The sprite should have different frames for facing up, down, left, and right.
-
-AI Cars: Generate 3-4 different pixel art sprites for the AI cars, each with a unique color (e.g., blue, green, yellow, purple) but sharing the same charming design style as the player's car.
-
-Car drivers: Driver characters can be humans, aliens or animals.
-
-Arena: Create a simple, rectangular arena background. The floor could be textured pixel art resembling dirt or wood planks. The walls should be clearly defined, perhaps looking like wooden fences or hay bales, consistent with the Stardew Valley theme.
-
-### Step 3: Gameplay Mechanics & Physics
-
-Player Control: The player's car should be controlled using the Arrow Keys (Up, Down, Left, Right) for movement. Movement should be smooth.
-
-Collision & Bumping:
-
-When the player's car collides with an AI car, implement a "bump" effect. Both cars should recoil slightly in opposite directions.
-
-Upon collision, the player's score increases by 1.
-
-Cars should not be able to pass through each other or through the arena walls.
-
-AI Behavior:
-
-The AI cars should move around the arena randomly but in a way resembling being driven by a human.
-
-Implement simple logic for the AI cars to change direction periodically and after colliding with a wall or another car.
-
-### Step 4: User Interface (UI)
-
-Display: Create a simple, non-intrusive UI overlay at the top of the screen.
-
-Font: Use a clear, pixelated font that matches the game's aesthetic.
-
-Elements: The UI should display two things:
-
-Score: Labeled "Score:" followed by the player's current point total.
-
-Timer: Labeled "Time:" followed by the remaining seconds, counting down from 60.
-
-Game Over: When the timer reaches zero, display a "Game Over!" message in the center of the screen, along with the final score.
-
-### Step 5: Technical Implementation
-
-Framework Selection: You are to select a modern JavaScript framework or library suitable for creating a 2D browser-based game. Good choices include Phaser, Kaboom.js, or PixiJS. Please state which framework you have chosen and why.
-
-Project Structure: Define and generate a logical, well-organized project structure with separate files and folders.
-
-Code Generation: Generate the code for each file within this structure. The code should be well-commented to explain the logic, especially the parts related to the chosen framework's specific functions (e.g., scene management, sprite creation, physics engine).
-
-Asset Handling: The pixel art assets should still be generated by you. Explain how to integrate them into the chosen framework's asset loading system. You can generate them as Base64 data URLs and load them into the framework's texture manager.
-
-Testing: Most of the code should be covered by unit tests when viable.
-
-Coding loop: When you make code changes, make sure you run linter and tests and fix errors found by them.
-
-Documentation: Provide simple, clear instructions on how to set up and run the project locally and how to run tests.
+## Testing Strategy
+-   **Unit Tests:** Focus on `src/logic/` and `src/utils/`.
+-   **Integration Tests:** Verify Scene setup and physics interactions where possible.
+-   **Mocking:** The `canvas` context is often mocked in tests for asset generation checks.
