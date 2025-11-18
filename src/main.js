@@ -23,5 +23,4 @@ const config = {
   scene: [GameScene],
 };
 
-// eslint-disable-next-line no-new
 new Phaser.Game(config);
