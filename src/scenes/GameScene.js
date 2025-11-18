@@ -1,5 +1,6 @@
 import { createCarSprite } from '../sprites/Car.js';
 import { generatePixelAssets } from '../utils/assets.js';
+import { playBump, playScore, playWallHit, playPowerup, playGameOver, resumeAudio, playExplosion } from '../utils/audio.js';
 import { canScoreHit } from '../logic/gameLogic.js';
 import {
   ARENA_MARGIN,
@@ -72,6 +73,8 @@ export class GameScene extends Phaser.Scene {
     this.playerPowerupActive = false;
     this.playerPowerupEndTime = null;
     this.lastShakeAt = 0;
+    this.lastBumpSoundAt = 0;
+    this.lastWallSoundAt = 0;
 
     // Floor: layered wood + subtle noise for texture
     const floor = this.add.tileSprite(0, 0, width, height, 'floor_wood').setOrigin(0, 0);
@@ -225,6 +228,11 @@ export class GameScene extends Phaser.Scene {
         padding: { x: 2, y: 2 },
       },
     ).setOrigin(0.5, 0).setDepth(100).setScrollFactor(0);
+
+    // Ensure audio context is resumed on first interaction
+    this.input.once('pointerdown', () => resumeAudio());
+    this.input.keyboard.once('keydown', () => resumeAudio());
+
     // Pause overlay dimmer
     this.pauseDim = this.add.rectangle(0, 0, width, height, 0x000000, 0.45)
       .setOrigin(0, 0)
@@ -305,6 +313,8 @@ export class GameScene extends Phaser.Scene {
     this.input.keyboard.once('keydown-ENTER', () => {
       this.scene.restart();
     });
+
+    playGameOver();
   }
 
   togglePause() {
@@ -439,6 +449,8 @@ export class GameScene extends Phaser.Scene {
     
     // Visual indicator: slight tint on player
     this.player.setTint(0xffdd44);
+    
+    playPowerup();
   }
 
   handleCarCollision(a, b) {
@@ -470,6 +482,12 @@ export class GameScene extends Phaser.Scene {
       if (now - this.lastShakeAt > SHAKE_COOLDOWN_MS) {
         this.cameras.main.shake(150, 0.015);
         this.lastShakeAt = now;
+      }
+
+      // Play bump sound with cooldown (separate from shake to allow slightly more audio feedback)
+      if (now - this.lastBumpSoundAt > 200) {
+        playBump();
+        this.lastBumpSoundAt = now;
       }
 
       const playerObj = aIsPlayer ? a : b;
@@ -562,6 +580,7 @@ export class GameScene extends Phaser.Scene {
         b.setData('lastScoredAt', now);
         this.score += 1;
         this.scoreText.setText(`Score: ${this.score}`);
+        playScore();
       }
     } else if (bIsPlayer && aIsAi) {
       const lastScoredAt = a.getData('lastScoredAt');
@@ -569,6 +588,7 @@ export class GameScene extends Phaser.Scene {
         a.setData('lastScoredAt', now);
         this.score += 1;
         this.scoreText.setText(`Score: ${this.score}`);
+        playScore();
       }
     }
   }
@@ -616,6 +636,12 @@ export class GameScene extends Phaser.Scene {
     // Slightly separate from wall to avoid sticking
     car.x += nx * 2;
     car.y += ny * 2;
+
+    // Play wall hit sound (debounce for player only or loud hits)
+    if (car === this.player && this.time.now - this.lastWallSoundAt > 200) {
+      playWallHit();
+      this.lastWallSoundAt = this.time.now;
+    }
   }
 
   update(time, _delta) {
@@ -724,6 +750,8 @@ export class GameScene extends Phaser.Scene {
       ease: 'Power2',
       onComplete: () => flash.destroy()
     });
+
+    playExplosion();
 
     const spawn = this.findFreeSpawnPoint(ai);
     const angle = Phaser.Math.FloatBetween(0, Math.PI * 2);
