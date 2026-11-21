@@ -1,3 +1,4 @@
+import Phaser from 'phaser';
 import { createCarSprite } from '../sprites/Car.js';
 import { Hud, cssColor } from '../ui/Hud.js';
 import { generatePixelAssets } from '../utils/assets.js';

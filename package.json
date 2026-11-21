@@ -1,7 +1,7 @@
 {
   "name": "bumper-cars",
   "version": "1.0.0",
-  "description": "A simple Stardew-like pixel art bumper cars game built with Phaser 3",
+  "description": "A simple Stardew-like pixel art bumper cars game built with Phaser 4",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -12,7 +12,7 @@
     "lint": "eslint ."
   },
   "dependencies": {
-    "phaser": "^3.90.0"
+    "phaser": "^4.2.1"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

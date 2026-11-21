@@ -4,7 +4,7 @@ A simple browser-based bumper cars game with a cozy pixel art vibe inspired by S
 
 ### Framework Choice
 
-We use **Phaser 3** because it provides:
+We use **Phaser 4** because it provides:
 - **Built-in 2D physics** (Arcade) suitable for simple collision and recoil.
 - **Scene system** for clean separation of boot/gameplay.
 - **Texture manager** that allows loading base64 textures at runtime, which we use for generated pixel art assets.

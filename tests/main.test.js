@@ -3,8 +3,6 @@ import { describe, it, expect, vi } from 'vitest';
 const hoisted = vi.hoisted(() => {
   const GameMock = vi.fn();
   const PhaserStub = { AUTO: 'AUTO', Game: GameMock, Scene: class {}, Scale: { FIT: 'FIT', CENTER_BOTH: 'CENTER_BOTH' } };
-  // Files such as GameScene.js use the Phaser global directly.
-  global.Phaser = PhaserStub;
   return { GameMock, PhaserStub };
 });
 

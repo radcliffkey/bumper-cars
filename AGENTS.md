@@ -1,6 +1,6 @@
 # Bumper Cars
 
-A browser arcade game built with **Phaser 3** (Arcade Physics), **Vite**, **Vitest** and **ESLint**, written in vanilla JavaScript ES modules. The player drives a bumper car around a fenced arena and scores by ramming wandering AI cars before a 90-second round ends. The look is cozy pixel art; every image and sound is generated at runtime.
+A browser arcade game built with **Phaser 4** (Arcade Physics), **Vite**, **Vitest** and **ESLint**, written in vanilla JavaScript ES modules. The player drives a bumper car around a fenced arena and scores by ramming wandering AI cars before a 90-second round ends. The look is cozy pixel art; every image and sound is generated at runtime.
 
 ## Commands
 
@@ -30,7 +30,7 @@ src/
     assets.js        canvas-drawn textures as data URLs
     audio.js         Web Audio synthesized sound effects
     highScore.js     best score in localStorage, failure-tolerant
-tests/               one file per module; setup.vitest.js shims the Phaser global
+tests/               one file per module; setup.vitest.js mocks the 'phaser' module
 ```
 
 ## How the game works
@@ -47,7 +47,8 @@ tests/               one file per module; setup.vitest.js shims the Phaser globa
 - **The arena is the world bounds.** There are no wall bodies. Fence hits arrive through the `worldbounds` event, because `createCarSprite` sets `body.onWorldBounds`.
 - **Read the player's velocity from `playerVelocity`, not the body, in collide callbacks.** Arcade rewrites both bodies' velocities while separating them, before the callback runs.
 - **Text is rasterized once.** That's why `main.js` waits for the web font before booting (with a timeout). Prefer reusing Text objects (`Hud.floatText` pools them) over creating one per event, and avoid `setColor`/`setText` calls that don't change anything.
-- **`Phaser` is a global** in scene, HUD and sprite files. Importing `phaser` in `main.js` sets it up. Only `main.js` imports the package.
+- **Import Phaser; there is no global.** Phaser 4's ESM build doesn't set `window.Phaser`. Any file that uses the `Phaser` namespace needs `import Phaser from 'phaser'` (today `main.js` and `GameScene.js`). Files that only receive a scene, such as `Hud.js` and `Car.js`, need no import.
+- **Restart the dev server after changing dependencies.** Vite can keep serving its old pre-bundled copy (`node_modules/.vite/deps`) until it restarts.
 - `scene.restart()` rebuilds the physics world and resets the tween manager and keyboard listeners; nothing from the previous round needs manual cleanup.
 
 ## Conventions
@@ -56,13 +57,12 @@ tests/               one file per module; setup.vitest.js shims the Phaser globa
 - **No static asset files.** Draw images in `assets.js` and synthesize sounds in `audio.js`.
 - ES modules, semicolons, `const` by default, max line length 120 (lint warns). Comment why, not what; document only non-obvious functions.
 - Commit messages: short lowercase imperative summary (`add sound effects`, `update deps`), with an optional body.
-- Phaser is pinned to 3.x. Moving to Phaser 4 is a separate migration (new renderer, API changes).
 
 ## Testing
 
 - Pure modules (`logic/`, `highScore.js`) get direct unit tests, with table-style `it.each` where it fits.
 - Scene, HUD and sprite tests build the object and stub only what it touches: mock cars with a `Map` behind `getData`/`setData`, a stub `hud`, `tweens`, `cameras` and so on (see `createScene()` in `tests/gameScene.test.js`). Set `scene.clock` instead of faking time.
-- The Phaser global shim lives in `tests/setup.vitest.js`; extend it there rather than per file. `vi.mock` must sit at module top level (Vitest 5).
+- `tests/setup.vitest.js` mocks the `phaser` module (the real bundle needs a browser) with only what the scene uses; extend that stub rather than mocking per file. `vi.mock` must sit at module top level (Vitest 5).
 - Don't write tests that only re-assert constant values or exercise a mock.
 
 ## Verifying in the browser
@@ -71,4 +71,5 @@ Start the dev server and play: title screen, a round, pause (P), restart (R), ga
 
 To inspect live state from a browser automation tool:
 - Inject a `<script type="module">` that imports the page's own entry URL (read it from `script[src*="/src/main.js"]`; Vite appends `?t=…` after HMR). Then `await gameReady` and `game.scene.getScene('GameScene')`. Importing a different URL boots a second game.
+- Check which renderer you got (`game.renderer.type`: 1 Canvas, 2 WebGL). Some embedded browsers have no WebGL and silently fall back to Phaser's deprecated Canvas renderer, while players get WebGL. To test WebGL headless, run Chromium with `--use-angle=swiftshader --enable-unsafe-swiftshader` and drive it over the DevTools protocol.
 - A hidden or backgrounded page runs at a few fps, and `MAX_FRAME_DT_MS` then slows game time. For reliable numbers, call `game.loop.sleep()` and step frames yourself with `game.step(t, 1000 / 60)`, setting `scene.cursors.*.isDown` to drive.
