@@ -17,10 +17,11 @@
 ## Project Structure
 - `src/`
   - `config/` - Constants and configuration (`constants.js`)
-  - `logic/` - Pure game logic, decoupled from Phaser for easier testing (`gameLogic.js`)
-  - `scenes/` - Phaser Scenes (e.g., `GameScene.js` handles the main loop, input, and physics)
+  - `logic/` - Pure logic, decoupled from Phaser for easier testing: scoring, combos and spawning (`gameLogic.js`), driving and collision response (`physics.js`)
+  - `scenes/` - Phaser Scenes (`GameScene.js` handles the round flow, input and physics wiring)
   - `sprites/` - Phaser GameObjects/Sprites (`Car.js`)
-  - `utils/` - Helpers, specifically **runtime asset generation** (`assets.js`)
+  - `ui/` - HUD and overlays (`Hud.js`)
+  - `utils/` - **Runtime asset generation** (`assets.js`), synthesized sounds (`audio.js`), best-score storage (`highScore.js`)
   - `main.js` - Game entry point and config
 - `tests/` - Unit and integration tests mirroring the src structure
 
@@ -35,11 +36,13 @@
     -   Keep logic pure where possible to facilitate testing.
 
 3.  **Physics:**
-    -   Uses **Phaser Arcade Physics**.
-    -   Custom collision resolution (`handleCarCollision` in `GameScene.js`) implements billiard-like bounce physics with vector math, rather than relying solely on Arcade Physics default bounce.
+    -   Uses **Phaser Arcade Physics**; the arena is the world bounds (`worldbounds` event), there are no wall bodies.
+    -   AI cars live in a plain `this.add.group()`: adding a sprite to an Arcade *physics* group re-applies the group's body defaults and would wipe what `createCarSprite` set up.
+    -   Drag and steering are computed in `logic/physics.js`, not by Arcade drag. Car collision callbacks overwrite velocities with the results of `playerBump` / `aiBump`.
 
 4.  **State Management:**
-    -   Game state (score, time, paused) is managed directly within `GameScene`.
+    -   `GameScene.phase` is one of `ready` (title), `playing`, `paused`, `over`.
+    -   All gameplay timing uses `GameScene.clock`, milliseconds of unpaused play advanced in `update()`, so pausing needs no timer bookkeeping. Don't use `this.time.now` for gameplay timers.
 
 ## Code Style & Conventions
 -   **ES Modules:** Use `import`/`export` syntax.

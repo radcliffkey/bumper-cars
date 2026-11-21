@@ -18,13 +18,9 @@ describe('Constants Configuration', () => {
   });
 
   describe('Arena layout constants', () => {
-    it('should have valid arena margins and walls', () => {
+    it('should keep spawns inside the fence', () => {
       expect(constants.ARENA_MARGIN).toBeGreaterThan(0);
-      expect(constants.WALL_THICKNESS).toBeGreaterThan(0);
-      expect(constants.FENCE_THICKNESS).toBeGreaterThan(0);
-      
-      // Arena margin should be large enough to contain fence
-      expect(constants.ARENA_MARGIN).toBeGreaterThanOrEqual(constants.FENCE_THICKNESS);
+      expect(constants.SPAWN_PADDING).toBeGreaterThanOrEqual(constants.ARENA_MARGIN);
     });
 
     it('should leave enough playable area', () => {
@@ -39,12 +35,11 @@ describe('Constants Configuration', () => {
   describe('Car configuration', () => {
     it('should have valid car physics properties', () => {
       expect(constants.CAR_BODY_RADIUS).toBeGreaterThan(0);
-      expect(constants.CAR_BODY_OFFSET_X).toBeGreaterThanOrEqual(0);
-      expect(constants.CAR_BODY_OFFSET_Y).toBeGreaterThanOrEqual(0);
-      expect(constants.CAR_LINEAR_DRAG).toBeGreaterThan(0);
-      expect(constants.CAR_LINEAR_DRAG).toBeLessThanOrEqual(1);
-      expect(constants.CAR_BOUNCE).toBeGreaterThanOrEqual(0);
-      expect(constants.CAR_BOUNCE).toBeLessThanOrEqual(1);
+      expect(constants.CAR_BODY_OFFSET).toBeGreaterThanOrEqual(0);
+      expect(constants.PLAYER_DRAG).toBeGreaterThan(0);
+      expect(constants.AI_DRAG).toBeGreaterThan(0);
+      expect(constants.PLAYER_WALL_BOUNCE).toBeGreaterThanOrEqual(0);
+      expect(constants.PLAYER_WALL_BOUNCE).toBeLessThanOrEqual(1);
     });
 
     it('should have car size fit within arena', () => {
@@ -79,8 +74,9 @@ describe('Constants Configuration', () => {
 
   describe('Game timing', () => {
     it('should have reasonable game duration', () => {
-      expect(constants.GAME_DURATION_SECONDS).toBeGreaterThan(30); // Not too short
-      expect(constants.GAME_DURATION_SECONDS).toBeLessThan(1800); // Not too long (30 min)
+      expect(constants.ROUND_DURATION_MS).toBeGreaterThan(30_000); // Not too short
+      expect(constants.ROUND_DURATION_MS).toBeLessThan(600_000); // Not too long
+      expect(constants.URGENT_TIME_MS).toBeLessThan(constants.ROUND_DURATION_MS);
     });
 
     it('should have reasonable scoring cooldown', () => {
@@ -164,8 +160,7 @@ describe('Constants Configuration', () => {
       expect(constants.CAR_BODY_RADIUS * 2).toBeLessThanOrEqual(constants.CAR_PIXEL_SIZE);
       
       // Physics body offsets should be reasonable
-      expect(constants.CAR_BODY_OFFSET_X + constants.CAR_BODY_RADIUS).toBeLessThanOrEqual(constants.CAR_PIXEL_SIZE);
-      expect(constants.CAR_BODY_OFFSET_Y + constants.CAR_BODY_RADIUS).toBeLessThanOrEqual(constants.CAR_PIXEL_SIZE);
+      expect(constants.CAR_BODY_OFFSET * 2 + constants.CAR_BODY_RADIUS * 2).toBe(constants.CAR_PIXEL_SIZE);
       
       // Arena should be large enough for multiple cars with clearance
       const minPlayArea = constants.AI_RESPAWN_CLEARANCE_PX * 4;

@@ -3,7 +3,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 // Create hoisted refs for mocks used inside vi.mock
 const hoisted = vi.hoisted(() => {
   const GameMock = vi.fn();
-  const PhaserStub = { AUTO: 'AUTO', Game: GameMock, Scene: class {} };
+  const PhaserStub = { AUTO: 'AUTO', Game: GameMock, Scene: class {}, Scale: { FIT: 'FIT', CENTER_BOTH: 'CENTER_BOTH' } };
   // Provide global Phaser for files that reference it directly (e.g., GameScene.js)
   global.Phaser = PhaserStub;
   return { GameMock, PhaserStub };
@@ -21,7 +21,7 @@ describe('main entry wiring', () => {
     }), { virtual: true });
 
     const mod = await import('../src/main.js');
-    expect(mod).toBeTruthy();
+    await mod.gameReady;
     expect(hoisted.GameMock).toHaveBeenCalledTimes(1);
     const [config] = hoisted.GameMock.mock.calls[0];
 
@@ -31,6 +31,7 @@ describe('main entry wiring', () => {
     expect(config.physics.default).toBe('arcade');
     expect(Array.isArray(config.scene)).toBe(true);
     expect(config.render.pixelArt).toBe(true);
+    expect(config.scale.mode).toBe('FIT');
   });
 });
 

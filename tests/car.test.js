@@ -1,82 +1,28 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { createCarSprite } from '../src/sprites/Car.js';
+import { CAR_BODY_RADIUS, CAR_BODY_OFFSET } from '../src/config/constants.js';
 
-// Mock Phaser scene with physics system
-const mockPhysicsBody = {
-  setDamping: vi.fn(),
-  setDrag: vi.fn(),
-  setCircle: vi.fn(),
-  setBounce: vi.fn(),
-  reset: vi.fn()
-};
+function mockScene() {
+  const sprite = { body: {} };
+  ['setCircle', 'setBounce', 'setCollideWorldBounds', 'setDepth'].forEach((m) => {
+    sprite[m] = vi.fn(() => sprite);
+  });
+  return { physics: { add: { sprite: vi.fn(() => sprite) } }, sprite };
+}
 
-const mockSprite = {
-  setDamping: vi.fn(() => mockSprite),
-  setDrag: vi.fn(() => mockSprite),
-  setCircle: vi.fn(() => mockSprite),
-  setBounce: vi.fn(() => mockSprite),
-  body: mockPhysicsBody
-};
-
-const mockPhysics = {
-  add: {
-    sprite: vi.fn(() => mockSprite)
-  }
-};
-
-const mockScene = {
-  physics: mockPhysics
-};
-
-describe('Car Sprite Creation', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
+describe('createCarSprite', () => {
+  it('creates a physics sprite with a centred circular body', () => {
+    const scene = mockScene();
+    const car = createCarSprite(scene, 100, 200, 'player_up', 0.5);
+    expect(scene.physics.add.sprite).toHaveBeenCalledWith(100, 200, 'player_up');
+    expect(car.setCircle).toHaveBeenCalledWith(CAR_BODY_RADIUS, CAR_BODY_OFFSET, CAR_BODY_OFFSET);
   });
 
-  describe('createCarSprite function', () => {
-    it('should create a sprite with correct position and texture', () => {
-      const x = 100;
-      const y = 200;
-      const key = 'player_up';
-      
-      const sprite = createCarSprite(mockScene, x, y, key);
-      
-      expect(mockScene.physics.add.sprite).toHaveBeenCalledWith(x, y, key);
-      expect(sprite).toBe(mockSprite);
-    });
-
-    it('should configure physics properties correctly', () => {
-      const sprite = createCarSprite(mockScene, 0, 0, 'test');
-      
-      expect(sprite.setDamping).toHaveBeenCalledWith(true);
-      expect(sprite.setDrag).toHaveBeenCalledWith(0.9); // CAR_LINEAR_DRAG
-      expect(sprite.setCircle).toHaveBeenCalledWith(24, 8, 8); // CAR_BODY_RADIUS, offsets
-      expect(sprite.setBounce).toHaveBeenCalledWith(0.6); // CAR_BOUNCE
-    });
-
-    it('should return the configured sprite', () => {
-      const sprite = createCarSprite(mockScene, 50, 75, 'ai0_down');
-      expect(sprite).toBe(mockSprite);
-    });
-
-    it('should handle different sprite keys', () => {
-      const spriteKeys = ['player_up', 'player_down', 'ai0_left', 'ai5_right'];
-      
-      spriteKeys.forEach(key => {
-        createCarSprite(mockScene, 0, 0, key);
-        expect(mockScene.physics.add.sprite).toHaveBeenCalledWith(0, 0, key);
-      });
-    });
-
-    it('should maintain method chaining for sprite configuration', () => {
-      // Each method should return the sprite to allow chaining
-      const sprite = createCarSprite(mockScene, 0, 0, 'test');
-      
-      // Verify that all the configuration methods were called
-      expect(sprite.setDamping).toHaveBeenCalled();
-      expect(sprite.setDrag).toHaveBeenCalled();
-      expect(sprite.setCircle).toHaveBeenCalled();
-      expect(sprite.setBounce).toHaveBeenCalled();
-    });
+  it('keeps the car in the arena and reports fence hits', () => {
+    const scene = mockScene();
+    const car = createCarSprite(scene, 0, 0, 'ai0_down', 1);
+    expect(car.setBounce).toHaveBeenCalledWith(1);
+    expect(car.setCollideWorldBounds).toHaveBeenCalledWith(true);
+    expect(car.body.onWorldBounds).toBe(true);
   });
 });
