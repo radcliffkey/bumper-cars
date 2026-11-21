@@ -1,25 +1,17 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 
-// Create hoisted refs for mocks used inside vi.mock
 const hoisted = vi.hoisted(() => {
   const GameMock = vi.fn();
   const PhaserStub = { AUTO: 'AUTO', Game: GameMock, Scene: class {}, Scale: { FIT: 'FIT', CENTER_BOTH: 'CENTER_BOTH' } };
-  // Provide global Phaser for files that reference it directly (e.g., GameScene.js)
+  // Files such as GameScene.js use the Phaser global directly.
   global.Phaser = PhaserStub;
   return { GameMock, PhaserStub };
 });
 
-// Ensure a clean module cache between tests
-beforeEach(() => {
-  vi.resetModules();
-});
+vi.mock('phaser', () => ({ default: hoisted.PhaserStub }));
 
 describe('main entry wiring', () => {
   it('creates a Phaser.Game with expected config', async () => {
-    vi.mock('phaser', () => ({
-      default: hoisted.PhaserStub,
-    }), { virtual: true });
-
     const mod = await import('../src/main.js');
     await mod.gameReady;
     expect(hoisted.GameMock).toHaveBeenCalledTimes(1);
@@ -34,5 +26,3 @@ describe('main entry wiring', () => {
     expect(config.scale.mode).toBe('FIT');
   });
 });
-
-
