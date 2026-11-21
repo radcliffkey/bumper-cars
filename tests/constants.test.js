@@ -156,11 +156,13 @@ describe('Constants Configuration', () => {
 
   describe('Constant relationships and dependencies', () => {
     it('should maintain logical relationships between related constants', () => {
-      // Car should fit within its pixel sprite
-      expect(constants.CAR_BODY_RADIUS * 2).toBeLessThanOrEqual(constants.CAR_PIXEL_SIZE);
+      // The physics circle (world pixels) must fit inside the car sprite as displayed
+      expect(constants.CAR_BODY_RADIUS * 2).toBeLessThanOrEqual(constants.CAR_PIXEL_SIZE * constants.PIXEL_SCALE);
       
       // Physics body offsets should be reasonable
-      expect(constants.CAR_BODY_OFFSET * 2 + constants.CAR_BODY_RADIUS * 2).toBe(constants.CAR_PIXEL_SIZE);
+      // ...and be centred in it, in texture pixels
+      const radiusInTexture = constants.CAR_BODY_RADIUS / constants.PIXEL_SCALE;
+      expect(constants.CAR_BODY_OFFSET * 2 + radiusInTexture * 2).toBe(constants.CAR_PIXEL_SIZE);
       
       // Arena should be large enough for multiple cars with clearance
       const minPlayArea = constants.AI_RESPAWN_CLEARANCE_PX * 4;

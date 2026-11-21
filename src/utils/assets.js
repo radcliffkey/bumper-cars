@@ -1,624 +1,261 @@
-// Assets are generated as tiny base64 PNGs to emulate cozy pixel art.
-// We produce directional car sprites, a wooden floor tile, and a fence tile.
-import { 
-  CAR_PIXEL_SIZE, 
-  TILE_SIZE, 
+// All textures are drawn here with the canvas 2D API and handed to Phaser as data URLs:
+// cars (art in carArt.js), the arena floor and fence, shadows, the chest and effect pixels.
+// Arena textures are in art pixels; the scene shows them at PIXEL_SCALE.
+import { paintCar, carTextureKey, CAR_ART_FACINGS, DRIVERS, PLAYER_DRIVER } from './carArt.js';
+import { shade } from './color.js';
+import {
+  ARENA_MARGIN,
+  TILE_SIZE,
+  FLOOR_TILE_WIDTH,
+  NOISE_TILE_SIZE,
+  PIXEL_SCALE,
   FLOOR_NOISE_GENERATION_ALPHA,
+  FLOOR_PLANK,
+  WOOD_OUTLINE,
+  WOOD_LIGHT,
   AI_COLORS,
-  PLAYER_COLOR 
+  PLAYER_COLOR,
+  TURBO_COLOR,
+  TURBO_OUTLINE,
+  BURST_COLORS,
+  DUST_COLOR,
 } from '../config/constants.js';
 
-// In test environments, the mocked 2D context may be missing path APIs.
-// This helper ensures required methods exist as safe no-ops.
-function get2DContext(canvas) {
-  const ctx = canvas.getContext('2d');
-  if (!ctx) return ctx;
-  if (typeof ctx.beginPath !== 'function') ctx.beginPath = () => {};
-  if (typeof ctx.arc !== 'function') ctx.arc = () => {};
-  if (typeof ctx.fill !== 'function') ctx.fill = () => {};
-  if (typeof ctx.stroke !== 'function') ctx.stroke = () => {};
-  if (typeof ctx.closePath !== 'function') ctx.closePath = () => {};
-  return ctx;
-}
-
-export function drawCarFacing(direction, colorHex, size = 32) {
-  const c = document.createElement('canvas');
-  c.width = size;
-  c.height = size;
-  const ctx = get2DContext(c);
-  const s = size / 32; // scale factor
-
-  // base shadow
-  ctx.fillStyle = 'rgba(42, 31, 26, 0.5)';
-  ctx.fillRect(6 * s, 24 * s, 20 * s, 3 * s);
-
-  // Draw bumper car from appropriate angle
-  if (direction === 'left') {
-    drawCarSideViewLeft(ctx, s, colorHex);
-  } else if (direction === 'right') {
-    drawCarSideViewRight(ctx, s, colorHex);
-  } else if (direction === 'up') {
-    drawCarBackView(ctx, s, colorHex);
-  } else { // down
-    drawCarFrontView(ctx, s, colorHex);
-  }
-
-  return c.toDataURL('image/png');
-}
-
-function drawCarSideViewLeft(ctx, s, colorHex) {
-  // Wheels (visible on side)
-  ctx.fillStyle = '#1a1a1a';
-  // Front wheel
-  ctx.beginPath();
-  ctx.arc(9 * s, 20 * s, 3.5 * s, 0, Math.PI * 2);
-  ctx.fill();
-  // Back wheel
-  ctx.beginPath();
-  ctx.arc(22 * s, 20 * s, 3.5 * s, 0, Math.PI * 2);
-  ctx.fill();
-
-  // Wheel rims
-  ctx.fillStyle = '#3a3a3a';
-  ctx.beginPath();
-  ctx.arc(9 * s, 20 * s, 2 * s, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.beginPath();
-  ctx.arc(22 * s, 20 * s, 2 * s, 0, Math.PI * 2);
-  ctx.fill();
-
-  // Car body lower section (main bumper car body)
-  ctx.fillStyle = colorHex;
-  ctx.fillRect(6 * s, 11 * s, 20 * s, 10 * s);
-  
-  // Rounded front and back
-  ctx.beginPath();
-  ctx.arc(6 * s, 16 * s, 5 * s, Math.PI / 2, Math.PI * 1.5);
-  ctx.fill();
-  ctx.beginPath();
-  ctx.arc(26 * s, 16 * s, 5 * s, Math.PI * 1.5, Math.PI / 2);
-  ctx.fill();
-
-  // Shading on body (darker bottom)
-  ctx.fillStyle = shade(colorHex, -25);
-  ctx.fillRect(6 * s, 18 * s, 20 * s, 3 * s);
-  
-  // Bumper rubber trim
-  ctx.fillStyle = '#2a2a2a';
-  ctx.fillRect(5 * s, 11 * s, 1 * s, 10 * s);
-  ctx.fillRect(26 * s, 11 * s, 1 * s, 10 * s);
-
-  // Highlight on top of body
-  ctx.fillStyle = shade(colorHex, 15);
-  ctx.fillRect(7 * s, 11 * s, 18 * s, 2 * s);
-
-  // Headlight
-  ctx.fillStyle = '#ffd86b';
-  ctx.fillRect(5 * s, 14 * s, 2 * s, 3 * s);
-  ctx.fillStyle = '#fff9e6';
-  ctx.fillRect(5 * s, 15 * s, 1 * s, 1 * s);
-
-  // Seat/cockpit area
-  ctx.fillStyle = '#4a3428';
-  ctx.fillRect(11 * s, 9 * s, 9 * s, 4 * s);
-
-  // Windshield
-  ctx.fillStyle = '#89d5f7';
-  ctx.fillRect(9 * s, 8 * s, 4 * s, 5 * s);
-  ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
-  ctx.fillRect(9 * s, 8 * s, 2 * s, 3 * s);
-
-  // Driver's head (large and cartoonish) - facing left
-  ctx.fillStyle = '#f4d2a6'; // skin tone
-  ctx.beginPath();
-  ctx.arc(14 * s, 7 * s, 4 * s, 0, Math.PI * 2);
-  ctx.fill();
-
-  // Hair
-  ctx.fillStyle = '#5c3a21';
-  ctx.fillRect(11 * s, 3 * s, 6 * s, 3 * s);
-  ctx.fillRect(11 * s, 5 * s, 5 * s, 2 * s);
-
-  // Ear (left side)
-  ctx.fillStyle = '#eac39b';
-  ctx.fillRect(10 * s, 7 * s, 2 * s, 2 * s);
-
-  // Eye (simple, looking left)
-  ctx.fillStyle = '#ffffff';
-  ctx.fillRect(11 * s, 6 * s, 2 * s, 2 * s);
-  ctx.fillStyle = '#2a2a2a';
-  ctx.fillRect(11 * s, 7 * s, 1 * s, 1 * s);
-
-  // Smile
-  ctx.fillStyle = '#8b5a3c';
-  ctx.fillRect(11 * s, 9 * s, 2 * s, 1 * s);
-
-  // Neck
-  ctx.fillStyle = '#f4d2a6';
-  ctx.fillRect(13 * s, 10 * s, 3 * s, 2 * s);
-
-  // Steering wheel
-  ctx.fillStyle = '#4a4a4a';
-  ctx.beginPath();
-  ctx.arc(16 * s, 12 * s, 2 * s, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.fillStyle = '#2a2a2a';
-  ctx.beginPath();
-  ctx.arc(16 * s, 12 * s, 1 * s, 0, Math.PI * 2);
-  ctx.fill();
-}
-
-function drawCarSideViewRight(ctx, s, colorHex) {
-  // Wheels (visible on side)
-  ctx.fillStyle = '#1a1a1a';
-  // Front wheel
-  ctx.beginPath();
-  ctx.arc(23 * s, 20 * s, 3.5 * s, 0, Math.PI * 2);
-  ctx.fill();
-  // Back wheel
-  ctx.beginPath();
-  ctx.arc(10 * s, 20 * s, 3.5 * s, 0, Math.PI * 2);
-  ctx.fill();
-
-  // Wheel rims
-  ctx.fillStyle = '#3a3a3a';
-  ctx.beginPath();
-  ctx.arc(23 * s, 20 * s, 2 * s, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.beginPath();
-  ctx.arc(10 * s, 20 * s, 2 * s, 0, Math.PI * 2);
-  ctx.fill();
-
-  // Car body lower section (main bumper car body)
-  ctx.fillStyle = colorHex;
-  ctx.fillRect(6 * s, 11 * s, 20 * s, 10 * s);
-  
-  // Rounded front and back
-  ctx.beginPath();
-  ctx.arc(26 * s, 16 * s, 5 * s, Math.PI * 1.5, Math.PI / 2);
-  ctx.fill();
-  ctx.beginPath();
-  ctx.arc(6 * s, 16 * s, 5 * s, Math.PI / 2, Math.PI * 1.5);
-  ctx.fill();
-
-  // Shading on body (darker bottom)
-  ctx.fillStyle = shade(colorHex, -25);
-  ctx.fillRect(6 * s, 18 * s, 20 * s, 3 * s);
-  
-  // Bumper rubber trim
-  ctx.fillStyle = '#2a2a2a';
-  ctx.fillRect(5 * s, 11 * s, 1 * s, 10 * s);
-  ctx.fillRect(26 * s, 11 * s, 1 * s, 10 * s);
-
-  // Highlight on top of body
-  ctx.fillStyle = shade(colorHex, 15);
-  ctx.fillRect(7 * s, 11 * s, 18 * s, 2 * s);
-
-  // Headlight
-  ctx.fillStyle = '#ffd86b';
-  ctx.fillRect(25 * s, 14 * s, 2 * s, 3 * s);
-  ctx.fillStyle = '#fff9e6';
-  ctx.fillRect(26 * s, 15 * s, 1 * s, 1 * s);
-
-  // Seat/cockpit area
-  ctx.fillStyle = '#4a3428';
-  ctx.fillRect(12 * s, 9 * s, 9 * s, 4 * s);
-
-  // Windshield
-  ctx.fillStyle = '#89d5f7';
-  ctx.fillRect(19 * s, 8 * s, 4 * s, 5 * s);
-  ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
-  ctx.fillRect(21 * s, 8 * s, 2 * s, 3 * s);
-
-  // Driver's head (large and cartoonish) - facing right
-  ctx.fillStyle = '#f4d2a6'; // skin tone
-  ctx.beginPath();
-  ctx.arc(18 * s, 7 * s, 4 * s, 0, Math.PI * 2);
-  ctx.fill();
-
-  // Hair
-  ctx.fillStyle = '#5c3a21';
-  ctx.fillRect(15 * s, 3 * s, 6 * s, 3 * s);
-  ctx.fillRect(16 * s, 5 * s, 5 * s, 2 * s);
-
-  // Ear (right side)
-  ctx.fillStyle = '#eac39b';
-  ctx.fillRect(20 * s, 7 * s, 2 * s, 2 * s);
-
-  // Eye (simple, looking right)
-  ctx.fillStyle = '#ffffff';
-  ctx.fillRect(19 * s, 6 * s, 2 * s, 2 * s);
-  ctx.fillStyle = '#2a2a2a';
-  ctx.fillRect(20 * s, 7 * s, 1 * s, 1 * s);
-
-  // Smile
-  ctx.fillStyle = '#8b5a3c';
-  ctx.fillRect(19 * s, 9 * s, 2 * s, 1 * s);
-
-  // Neck
-  ctx.fillStyle = '#f4d2a6';
-  ctx.fillRect(16 * s, 10 * s, 3 * s, 2 * s);
-
-  // Steering wheel
-  ctx.fillStyle = '#4a4a4a';
-  ctx.beginPath();
-  ctx.arc(16 * s, 12 * s, 2 * s, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.fillStyle = '#2a2a2a';
-  ctx.beginPath();
-  ctx.arc(16 * s, 12 * s, 1 * s, 0, Math.PI * 2);
-  ctx.fill();
-}
-
-function drawCarFrontView(ctx, s, colorHex) {
-  // Front wheels (both visible from front)
-  ctx.fillStyle = '#1a1a1a';
-  // Left wheel
-  ctx.fillRect(7 * s, 19 * s, 4 * s, 4 * s);
-  // Right wheel
-  ctx.fillRect(21 * s, 19 * s, 4 * s, 4 * s);
-
-  // Wheel highlights
-  ctx.fillStyle = '#3a3a3a';
-  ctx.fillRect(8 * s, 20 * s, 2 * s, 2 * s);
-  ctx.fillRect(22 * s, 20 * s, 2 * s, 2 * s);
-
-  // Car body - rounded front
-  ctx.fillStyle = colorHex;
-  // Main body
-  ctx.fillRect(7 * s, 12 * s, 18 * s, 10 * s);
-  
-  // Rounded top
-  ctx.beginPath();
-  ctx.arc(16 * s, 12 * s, 9 * s, Math.PI, Math.PI * 2);
-  ctx.fill();
-
-  // Darker shading on sides
-  ctx.fillStyle = shade(colorHex, -25);
-  ctx.fillRect(7 * s, 13 * s, 2 * s, 9 * s);
-  ctx.fillRect(23 * s, 13 * s, 2 * s, 9 * s);
-
-  // Front bumper rubber
-  ctx.fillStyle = '#2a2a2a';
-  ctx.fillRect(8 * s, 21 * s, 16 * s, 1 * s);
-
-  // Highlight on top
-  ctx.fillStyle = shade(colorHex, 15);
-  ctx.fillRect(10 * s, 8 * s, 12 * s, 2 * s);
-
-  // Windshield/cockpit area
-  ctx.fillStyle = '#89d5f7';
-  ctx.fillRect(10 * s, 10 * s, 12 * s, 5 * s);
-  // Windshield reflection
-  ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
-  ctx.fillRect(11 * s, 10 * s, 5 * s, 3 * s);
-
-  // Driver's head (large and cartoonish) - facing forward
-  ctx.fillStyle = '#f4d2a6'; // skin tone
-  ctx.beginPath();
-  ctx.arc(16 * s, 6 * s, 4.5 * s, 0, Math.PI * 2);
-  ctx.fill();
-
-  // Hair
-  ctx.fillStyle = '#5c3a21';
-  ctx.fillRect(12 * s, 2 * s, 8 * s, 3 * s);
-  ctx.fillRect(12 * s, 4 * s, 8 * s, 2 * s);
-  // Hair sides
-  ctx.fillRect(11 * s, 4 * s, 2 * s, 3 * s);
-  ctx.fillRect(19 * s, 4 * s, 2 * s, 3 * s);
-
-  // Both ears (front view)
-  ctx.fillStyle = '#eac39b';
-  ctx.fillRect(11 * s, 6 * s, 2 * s, 2 * s);
-  ctx.fillRect(19 * s, 6 * s, 2 * s, 2 * s);
-
-  // Eyes (both visible, looking forward)
-  ctx.fillStyle = '#ffffff';
-  ctx.fillRect(13 * s, 5 * s, 2 * s, 2 * s);
-  ctx.fillRect(17 * s, 5 * s, 2 * s, 2 * s);
-  ctx.fillStyle = '#2a2a2a';
-  ctx.fillRect(13 * s, 6 * s, 1 * s, 1 * s);
-  ctx.fillRect(18 * s, 6 * s, 1 * s, 1 * s);
-
-  // Smile
-  ctx.fillStyle = '#8b5a3c';
-  ctx.fillRect(14 * s, 8 * s, 4 * s, 1 * s);
-  ctx.fillRect(13 * s, 9 * s, 1 * s, 1 * s);
-  ctx.fillRect(18 * s, 9 * s, 1 * s, 1 * s);
-
-  // Neck
-  ctx.fillStyle = '#f4d2a6';
-  ctx.fillRect(14 * s, 10 * s, 4 * s, 2 * s);
-
-  // Headlights (both visible from front)
-  ctx.fillStyle = '#ffd86b';
-  ctx.fillRect(9 * s, 20 * s, 3 * s, 2 * s);
-  ctx.fillRect(20 * s, 20 * s, 3 * s, 2 * s);
-  ctx.fillStyle = '#fff9e6';
-  ctx.fillRect(10 * s, 20 * s, 1 * s, 1 * s);
-  ctx.fillRect(21 * s, 20 * s, 1 * s, 1 * s);
-
-  // Steering wheel (partial view)
-  ctx.fillStyle = '#4a4a4a';
-  ctx.fillRect(14 * s, 12 * s, 4 * s, 1 * s);
-}
-
-function drawCarBackView(ctx, s, colorHex) {
-  // Back wheels (both visible from back)
-  ctx.fillStyle = '#1a1a1a';
-  // Left wheel
-  ctx.fillRect(7 * s, 19 * s, 4 * s, 4 * s);
-  // Right wheel
-  ctx.fillRect(21 * s, 19 * s, 4 * s, 4 * s);
-
-  // Wheel highlights
-  ctx.fillStyle = '#3a3a3a';
-  ctx.fillRect(8 * s, 20 * s, 2 * s, 2 * s);
-  ctx.fillRect(22 * s, 20 * s, 2 * s, 2 * s);
-
-  // Car body - rounded back
-  ctx.fillStyle = colorHex;
-  // Main body
-  ctx.fillRect(7 * s, 12 * s, 18 * s, 10 * s);
-  
-  // Rounded top
-  ctx.beginPath();
-  ctx.arc(16 * s, 12 * s, 9 * s, Math.PI, Math.PI * 2);
-  ctx.fill();
-
-  // Darker shading on sides
-  ctx.fillStyle = shade(colorHex, -25);
-  ctx.fillRect(7 * s, 13 * s, 2 * s, 9 * s);
-  ctx.fillRect(23 * s, 13 * s, 2 * s, 9 * s);
-
-  // Back bumper rubber
-  ctx.fillStyle = '#2a2a2a';
-  ctx.fillRect(8 * s, 21 * s, 16 * s, 1 * s);
-
-  // Darker bottom (back view)
-  ctx.fillStyle = shade(colorHex, -30);
-  ctx.fillRect(9 * s, 19 * s, 14 * s, 3 * s);
-
-  // Highlight on top
-  ctx.fillStyle = shade(colorHex, 15);
-  ctx.fillRect(10 * s, 8 * s, 12 * s, 2 * s);
-
-  // Back of seat/headrest
-  ctx.fillStyle = '#4a3428';
-  ctx.fillRect(11 * s, 10 * s, 10 * s, 6 * s);
-  ctx.fillStyle = '#5c4530';
-  ctx.fillRect(12 * s, 11 * s, 8 * s, 2 * s);
-
-  // Driver's head (back of head) - large and cartoonish
-  ctx.fillStyle = '#f4d2a6'; // skin tone
-  ctx.beginPath();
-  ctx.arc(16 * s, 6 * s, 4.5 * s, 0, Math.PI * 2);
-  ctx.fill();
-
-  // Hair (back of head)
-  ctx.fillStyle = '#5c3a21';
-  ctx.fillRect(12 * s, 2 * s, 8 * s, 3 * s);
-  ctx.fillRect(12 * s, 4 * s, 8 * s, 3 * s);
-  ctx.fillRect(11 * s, 4 * s, 10 * s, 4 * s);
-
-  // Ears visible from back
-  ctx.fillStyle = '#eac39b';
-  ctx.fillRect(11 * s, 6 * s, 2 * s, 2 * s);
-  ctx.fillRect(19 * s, 6 * s, 2 * s, 2 * s);
-
-  // Neck from back
-  ctx.fillStyle = '#f4d2a6';
-  ctx.fillRect(14 * s, 9 * s, 4 * s, 3 * s);
-
-  // Tail/brake lights (both visible from back)
-  ctx.fillStyle = '#ff4444';
-  ctx.fillRect(9 * s, 20 * s, 3 * s, 2 * s);
-  ctx.fillRect(20 * s, 20 * s, 3 * s, 2 * s);
-  ctx.fillStyle = '#ff8888';
-  ctx.fillRect(10 * s, 20 * s, 1 * s, 1 * s);
-  ctx.fillRect(21 * s, 20 * s, 1 * s, 1 * s);
-}
-
-// === UTILITY FUNCTIONS ===
-
-/**
- * Creates a shade or tint of a hex color
- * @param {string} hex - Hex color string (e.g., '#ff0000')
- * @param {number} percent - Positive for lighter, negative for darker
- * @returns {string} Modified hex color
- */
-export function shade(hex, percent) {
-  const num = parseInt(hex.replace('#', ''), 16);
-  const r = Math.max(0, Math.min(255, (num >> 16) + Math.round((255 * percent) / 100)));
-  const g = Math.max(0, Math.min(255, ((num >> 8) & 0x00ff) + Math.round((255 * percent) / 100)));
-  const b = Math.max(0, Math.min(255, (num & 0x0000ff) + Math.round((255 * percent) / 100)));
-  return `#${(r << 16 | g << 8 | b).toString(16).padStart(6, '0')}`;
-}
-
-/**
- * Creates a canvas element with given dimensions
- * @param {number} width - Canvas width
- * @param {number} height - Canvas height
- * @returns {HTMLCanvasElement} Canvas element
- */
-export function createCanvas(width, height) {
+/** Creates a `width` x `height` canvas, lets `draw` paint on its context, returns a data URL. */
+function drawTexture(width, height, draw) {
   const canvas = document.createElement('canvas');
   canvas.width = width;
   canvas.height = height;
-  return canvas;
+  const ctx = canvas.getContext('2d');
+  draw(ctx);
+  return canvas.toDataURL('image/png');
 }
 
-// === TILE CREATION FUNCTIONS ===
+function fillRect(ctx, color, x, y, w, h) {
+  ctx.fillStyle = color;
+  ctx.fillRect(x, y, w, h);
+}
 
-/**
- * Creates a fence tile sprite
- * @returns {string} Base64 data URL of the fence tile
- */
-export function createFenceTile() {
-  const c = document.createElement('canvas');
-  c.width = 16;
-  c.height = 16;
-  const ctx = get2DContext(c);
-  // background dirt edge
-  ctx.fillStyle = '#5b3f2f';
-  ctx.fillRect(0, 0, 16, 16);
-  // fence posts
-  ctx.fillStyle = '#c89b67';
-  ctx.fillRect(2, 2, 4, 12);
-  ctx.fillRect(10, 2, 4, 12);
-  // rails
-  ctx.fillStyle = '#9b6a47';
-  ctx.fillRect(0, 5, 16, 2);
-  ctx.fillRect(0, 9, 16, 2);
-  // outlines
-  ctx.fillStyle = '#5a3e2b';
-  ctx.fillRect(2, 2, 1, 12);
-  ctx.fillRect(10, 2, 1, 12);
-  return c.toDataURL('image/png');
+/** Paints a grid of '#rrggbb' strings (null = transparent) into a texture, one cell per pixel. */
+export function gridToDataUrl(grid) {
+  return drawTexture(grid[0].length, grid.length, (ctx) => {
+    grid.forEach((row, y) =>
+      row.forEach((color, x) => {
+        if (color) fillRect(ctx, color, x, y, 1, 1);
+      }),
+    );
+  });
+}
+
+/** Small deterministic PRNG, so generated textures look the same on every load. */
+export function seededRandom(seed) {
+  let state = seed >>> 0;
+  return () => {
+    state = (Math.imul(state, 1664525) + 1013904223) >>> 0;
+    return state / 2 ** 32;
+  };
+}
+
+// === ARENA ===
+
+const WOOD = {
+  outline: WOOD_OUTLINE,
+  dark: '#7d5236',
+  light: WOOD_LIGHT,
+  highlight: '#e0b983',
+  dirt: '#5b3f2f',
+};
+const FENCE_SIZE = ARENA_MARGIN / PIXEL_SCALE;
+
+/** One fence post: outlined, lit on the left and top, shaded on the right. */
+function drawFencePost(ctx, x, y, w, h) {
+  fillRect(ctx, WOOD.outline, x - 1, y - 1, w + 2, h + 2);
+  fillRect(ctx, WOOD.light, x, y, w, h);
+  fillRect(ctx, WOOD.highlight, x, y, 1, h);
+  fillRect(ctx, WOOD.highlight, x, y, w, 1);
+  fillRect(ctx, WOOD.dark, x + w - 1, y + 1, 1, h - 1);
+}
+
+/** A rail two art pixels thick, lit then shaded, laid along x (or along y when `vertical`). */
+function drawFenceRail(ctx, offset, vertical) {
+  [WOOD.light, WOOD.dark].forEach((color, i) => {
+    if (vertical) fillRect(ctx, color, offset + i, 0, 1, FENCE_SIZE);
+    else fillRect(ctx, color, 0, offset + i, FENCE_SIZE, 1);
+  });
 }
 
 /**
- * Creates a wood plank floor tile
- * @returns {string} Base64 data URL of the wood tile
+ * Fence tile repeated along one side of the arena: two rails running along the side and one
+ * post per tile. 'h' is for the top and bottom fences, 'v' for the left and right ones.
  */
-export function createWoodPlankTile32() {
-  const c = document.createElement('canvas');
-  c.width = TILE_SIZE;
-  c.height = TILE_SIZE;
-  const ctx = get2DContext(c);
-  // background
-  ctx.fillStyle = '#6f4f3b';
-  ctx.fillRect(0, 0, TILE_SIZE, TILE_SIZE);
-  // draw horizontal planks with slight shade variation
-  const plankHeights = [9, 7, 8, 8];
-  let y = 0;
-  for (let i = 0; i < plankHeights.length; i += 1) {
-    const h = plankHeights[i];
-    const shadeDelta = i % 2 === 0 ? -8 : 8;
-    ctx.fillStyle = shade('#7e5a3f', shadeDelta);
-    ctx.fillRect(0, y, TILE_SIZE, h);
-    // top and bottom darker lines
-    ctx.fillStyle = '#5a3e2b';
-    ctx.fillRect(0, y, TILE_SIZE, 1);
-    ctx.fillRect(0, y + h - 1, TILE_SIZE, 1);
-    // random grain
-    ctx.fillStyle = '#a27a53';
-    for (let gx = 2; gx < TILE_SIZE - 2; gx += 6) {
-      const gy = y + 2 + ((gx + i * 3) % (h - 3));
-      ctx.fillRect(gx, gy, 2, 1);
+export function createFenceTile(orientation) {
+  const vertical = orientation === 'v';
+  return drawTexture(FENCE_SIZE, FENCE_SIZE, (ctx) => {
+    fillRect(ctx, WOOD.dirt, 0, 0, FENCE_SIZE, FENCE_SIZE);
+    drawFenceRail(ctx, 2, vertical);
+    drawFenceRail(ctx, 5, vertical);
+    if (vertical) drawFencePost(ctx, 1, 3, 6, 2);
+    else drawFencePost(ctx, 3, 1, 2, 6);
+  });
+}
+
+/** Square corner post that covers the joints where two fence sides meet. */
+export function createFenceCorner() {
+  return drawTexture(FENCE_SIZE, FENCE_SIZE, (ctx) => {
+    fillRect(ctx, WOOD.dirt, 0, 0, FENCE_SIZE, FENCE_SIZE);
+    drawFencePost(ctx, 1, 1, FENCE_SIZE - 2, FENCE_SIZE - 2);
+    fillRect(ctx, WOOD.outline, 3, 3, 2, 2); // cap
+    fillRect(ctx, WOOD.highlight, 3, 3, 1, 1);
+  });
+}
+
+/**
+ * Wooden floor tile (FLOOR_TILE_WIDTH x TILE_SIZE): planks with a single dark seam, staggered
+ * butt joints and subtle grain, so the repeat is hard to spot.
+ */
+export function createWoodFloorTile() {
+  const w = FLOOR_TILE_WIDTH;
+  const random = seededRandom(7);
+  const randomInt = (n) => Math.floor(random() * n);
+  return drawTexture(w, TILE_SIZE, (ctx) => {
+    const grain = (color, y, h, count, minLength) => {
+      for (let n = 0; n < count; n += 1) {
+        fillRect(ctx, color, randomInt(w - 6), y + 1 + randomInt(h - 3), minLength + randomInt(minLength + 1), 1);
+      }
+    };
+    let y = 0;
+    [9, 7, 8, 8].forEach((h, i) => {
+      const plank = shade(FLOOR_PLANK, i % 2 === 0 ? -4 : 4);
+      fillRect(ctx, plank, 0, y, w, h);
+      grain(shade(plank, 6), y, h, 4, 3);
+      grain(shade(plank, -6), y, h, 3, 2);
+
+      const joint = (i * 23 + 9) % w;
+      fillRect(ctx, WOOD.outline, joint, y, 1, h - 1);
+      fillRect(ctx, shade(plank, 8), joint + 1, y, 1, h - 1);
+      fillRect(ctx, '#b8a48a', (joint + w - 3) % w, y + 2, 1, 1); // nail heads
+      fillRect(ctx, '#b8a48a', (joint + 3) % w, y + h - 3, 1, 1);
+
+      fillRect(ctx, WOOD.outline, 0, y + h - 1, w, 1);
+      y += h;
+    });
+  });
+}
+
+/** Sparse dark specks laid over the floor, on a tile size that doesn't divide the floor's. */
+export function createNoiseOverlay() {
+  const size = NOISE_TILE_SIZE;
+  const random = seededRandom(42);
+  return drawTexture(size, size, (ctx) => {
+    const imageData = ctx.createImageData(size, size);
+    for (let i = 0; i < imageData.data.length; i += 4) {
+      const v = random() < 0.15 ? 0 : 255;
+      imageData.data[i] = v;
+      imageData.data[i + 1] = v;
+      imageData.data[i + 2] = v;
+      imageData.data[i + 3] = random() < 0.15 ? Math.floor(255 * FLOOR_NOISE_GENERATION_ALPHA) : 0;
     }
-    y += h;
-  }
-  // occasional nail heads
-  ctx.fillStyle = '#cfcfcf';
-  ctx.fillRect(6, 6, 1, 1);
-  ctx.fillRect(20, 14, 1, 1);
-  ctx.fillRect(10, 24, 1, 1);
-  return c.toDataURL('image/png');
+    ctx.putImageData(imageData, 0, 0);
+  });
+}
+
+// === SHADOWS AND EFFECTS ===
+
+/** Hard-edged pixel ellipse: one centred row per entry of `rowWidths`. */
+export function createPixelEllipse(rowWidths, color) {
+  const width = Math.max(...rowWidths);
+  return drawTexture(width, rowWidths.length, (ctx) => {
+    rowWidths.forEach((w, row) => fillRect(ctx, color, (width - w) / 2, row, w, 1));
+  });
+}
+
+/** A crisp 1px ring, expanded by a tween for impact "pops". */
+function createPopRing() {
+  const size = 12;
+  const center = (size - 1) / 2;
+  const outer = size / 2;
+  const grid = Array.from({ length: size }, (_r, y) =>
+    Array.from({ length: size }, (_c, x) => {
+      const d = Math.hypot(x - center, y - center);
+      return d < outer && d >= outer - 1 ? '#ffffff' : null;
+    }),
+  );
+  return gridToDataUrl(grid);
 }
 
 /**
- * Creates a noise overlay texture for floor tiles
- * @param {number} alpha - Alpha value for noise pixels (0-1)
- * @returns {string} Base64 data URL of the noise overlay
+ * The 16px bonus chest; `glint` moves the sparkles so two frames can alternate.
+ * Its shadow is a separate image so it stays on the floor while the chest bobs.
  */
-export function createNoiseOverlay32(alpha = FLOOR_NOISE_GENERATION_ALPHA) {
-  const c = document.createElement('canvas');
-  c.width = TILE_SIZE;
-  c.height = TILE_SIZE;
-  const ctx = get2DContext(c);
-  const imageData = ctx.createImageData(TILE_SIZE, TILE_SIZE);
-  for (let i = 0; i < imageData.data.length; i += 4) {
-    const v = Math.random() < 0.15 ? 0 : 255; // sparse dark specks
-    imageData.data[i] = v;
-    imageData.data[i + 1] = v;
-    imageData.data[i + 2] = v;
-    imageData.data[i + 3] = Math.random() < 0.15 ? Math.floor(255 * alpha) : 0;
-  }
-  ctx.putImageData(imageData, 0, 0);
-  return c.toDataURL('image/png');
-}
-
-/**
- * Creates a bonus chest sprite
- * @returns {string} Base64 data URL of the chest sprite
- */
-export function createBonusChest() {
-  const c = document.createElement('canvas');
-  const size = 32;
-  c.width = size;
-  c.height = size;
-  const ctx = get2DContext(c);
-  
-  // Shadow
-  ctx.fillStyle = '#2a1f1a';
-  ctx.fillRect(6, 26, 20, 3);
-  
-  // Bottom half (chest base)
-  ctx.fillStyle = '#8b6914';
-  ctx.fillRect(6, 16, 20, 10);
-  
-  // Top half (chest lid)
-  ctx.fillStyle = '#b8941f';
-  ctx.fillRect(6, 8, 20, 8);
-  
-  // Lid highlight
-  ctx.fillStyle = '#d4af37';
-  ctx.fillRect(7, 8, 18, 2);
-  
-  // Lock/clasp
-  ctx.fillStyle = '#4a4a4a';
-  ctx.fillRect(14, 14, 4, 6);
-  
-  // Lock highlight
-  ctx.fillStyle = '#707070';
-  ctx.fillRect(15, 15, 2, 2);
-  
-  // Metal bands
-  ctx.fillStyle = '#4a4a4a';
-  ctx.fillRect(6, 12, 20, 1);
-  ctx.fillRect(6, 20, 20, 1);
-  ctx.fillRect(10, 8, 1, 18);
-  ctx.fillRect(21, 8, 1, 18);
-  
-  // Sparkle effect
-  ctx.fillStyle = '#ffd700';
-  ctx.fillRect(8, 10, 2, 2);
-  ctx.fillRect(22, 18, 2, 2);
-  
-  return c.toDataURL('image/png');
+export function createBonusChest(glint) {
+  return drawTexture(16, 16, (ctx) => {
+    fillRect(ctx, '#3a2a12', 2, 3, 12, 11); // outline, so the chest reads against the floor
+    fillRect(ctx, '#8b6914', 3, 8, 10, 5); // base
+    fillRect(ctx, '#b8941f', 3, 4, 10, 4); // lid
+    fillRect(ctx, '#d4af37', 3, 4, 10, 1);
+    fillRect(ctx, '#4a4a4a', 3, 8, 10, 1); // band and straps
+    fillRect(ctx, '#4a4a4a', 5, 4, 1, 9);
+    fillRect(ctx, '#4a4a4a', 10, 4, 1, 9);
+    fillRect(ctx, '#4a4a4a', 7, 7, 2, 3); // lock
+    fillRect(ctx, '#9a9a9a', 7, 8, 1, 1);
+    const sparkles = glint ? [[11, 5], [4, 11]] : [[4, 6], [12, 10]];
+    sparkles.forEach(([x, y]) => {
+      fillRect(ctx, '#fff5c0', x, y - 1, 1, 3);
+      fillRect(ctx, '#fff5c0', x - 1, y, 3, 1);
+    });
+  });
 }
 
 // === MAIN ASSET GENERATION ===
 
-/**
- * Generates all pixel art assets for the game
- * @returns {Object} Object containing all game assets as base64 data URLs
- */
-export function generatePixelAssets() {
-  const assets = {};
+const FRAMES = [0, 1];
 
-  // Player directional sprites
-  ['up', 'down', 'left', 'right'].forEach((dir) => {
-    assets[`player_${dir}`] = drawCarFacing(dir, PLAYER_COLOR, CAR_PIXEL_SIZE);
-  });
-
-  // AI car directional sprites
-  AI_COLORS.forEach((color, idx) => {
-    ['up', 'down', 'left', 'right'].forEach((dir) => {
-      assets[`ai${idx}_${dir}`] = drawCarFacing(dir, color, CAR_PIXEL_SIZE);
+function addCarTextures(assets) {
+  const car = (dir, color, options) => gridToDataUrl(paintCar(dir, color, options));
+  CAR_ART_FACINGS.forEach((dir) => {
+    FRAMES.forEach((frame) => {
+      const player = { driver: PLAYER_DRIVER, frame };
+      assets[carTextureKey('player', dir, { frame })] = car(dir, PLAYER_COLOR, player);
+      assets[carTextureKey('player', dir, { frame, turbo: true })] = car(dir, TURBO_COLOR, {
+        ...player,
+        outline: TURBO_OUTLINE,
+      });
+    });
+    assets[carTextureKey('player', dir, { flash: true })] = car(dir, PLAYER_COLOR, { flash: true });
+    AI_COLORS.forEach((color, idx) => {
+      const base = `ai${idx}`;
+      const driver = DRIVERS[idx % DRIVERS.length];
+      FRAMES.forEach((frame) => {
+        assets[carTextureKey(base, dir, { frame })] = car(dir, color, { driver, frame });
+      });
+      assets[carTextureKey(base, dir, { cool: true })] = car(dir, color, { driver, cool: true });
     });
   });
-
-  // Environment assets
-  assets.fence_tile = createFenceTile();
-  assets.floor_wood = createWoodPlankTile32();
-  assets.floor_noise = createNoiseOverlay32();
-  
-  // Bonus chest
-  assets.bonus_chest = createBonusChest();
-
-  return assets;
 }
 
+/** Every texture the game uses, keyed by texture name, as data URLs. */
+export function generatePixelAssets() {
+  const assets = {};
+  addCarTextures(assets);
 
+  assets.fence_h = createFenceTile('h');
+  assets.fence_v = createFenceTile('v');
+  assets.fence_corner = createFenceCorner();
+  assets.floor_wood = createWoodFloorTile();
+  assets.floor_noise = createNoiseOverlay();
+
+  assets.bonus_chest = createBonusChest(false);
+  assets.bonus_chest_glint = createBonusChest(true);
+  assets.car_shadow = createPixelEllipse([18, 24, 26, 26, 24, 18], 'rgba(42, 31, 26, 0.45)');
+  assets.chest_shadow = createPixelEllipse([7, 10, 10, 7], 'rgba(42, 31, 26, 0.45)');
+
+  // Particle pixels; colours are baked in because Canvas can't tint particles.
+  // Particles are one art pixel bigger than they look at the end of their life; see BURST_PARTICLES.
+  const square = (color) => gridToDataUrl([[color, color], [color, color]]);
+  Object.entries(BURST_COLORS).forEach(([kind, color]) => {
+    assets[`px_${kind}`] = square(color);
+  });
+  assets.px_dust = square(DUST_COLOR);
+  assets.pop_ring = createPopRing();
+  return assets;
+}

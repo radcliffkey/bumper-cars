@@ -18,8 +18,14 @@ import {
   URGENT_TIME_MS,
 } from '../src/config/constants.js';
 
+function mockShadow() {
+  const shadow = { setPosition: vi.fn(() => shadow), setVisible: vi.fn(() => shadow) };
+  return shadow;
+}
+
 function mockCar({ x = 0, y = 0, vx = 0, vy = 0, ai = false } = {}) {
-  const data = new Map(ai ? [['ai', true], ['base', 'ai0'], ['dirChangeAt', 0]] : []);
+  const data = new Map([['facing', 'down'], ['shadow', mockShadow()], ['bobOffset', 0], ['flashUntil', 0]]);
+  if (ai) [['ai', true], ['base', 'ai0'], ['dirChangeAt', 0]].forEach(([k, v]) => data.set(k, v));
   const car = {
     x,
     y,
@@ -35,10 +41,17 @@ function mockCar({ x = 0, y = 0, vx = 0, vy = 0, ai = false } = {}) {
       else data.set(k, v);
       return car;
     },
-    setTexture: vi.fn(),
-    setAlpha: vi.fn(),
-    setTint: vi.fn(),
-    clearTint: vi.fn(),
+    texture: { key: '' },
+    flipX: false,
+    setFlipX: vi.fn((v) => {
+      car.flipX = v;
+      return car;
+    }),
+    setTexture: vi.fn((key) => {
+      car.texture.key = key;
+      return car;
+    }),
+    setDepth: vi.fn(),
   };
   car.body.gameObject = car;
   return car;
@@ -47,7 +60,12 @@ function mockCar({ x = 0, y = 0, vx = 0, vy = 0, ai = false } = {}) {
 function chainable() {
   const obj = { destroy: vi.fn() };
   obj.setDepth = vi.fn(() => obj);
+  obj.setScale = vi.fn(() => obj);
   return obj;
+}
+
+function mockEmitter() {
+  return { explode: vi.fn(), emitParticleAt: vi.fn(), pause: vi.fn(), resume: vi.fn() };
 }
 
 function createScene() {
@@ -65,11 +83,13 @@ function createScene() {
     hideOverlay: vi.fn(),
     floatText: vi.fn(),
     banner: vi.fn(),
+    update: vi.fn(),
   };
-  scene.cameras = { main: { shake: vi.fn() } };
+  scene.cameras = { main: { shake: vi.fn(), flash: vi.fn() } };
+  scene.emitters = Object.fromEntries(['spark', 'slam', 'gold', 'white', 'dust'].map((k) => [k, mockEmitter()]));
   scene.tweens = { add: vi.fn(), pauseAll: vi.fn(), resumeAll: vi.fn(), killTweensOf: vi.fn() };
-  scene.add = { circle: vi.fn(chainable), rectangle: vi.fn(chainable) };
-  scene.time = { delayedCall: vi.fn() };
+  scene.add = { image: vi.fn(chainable) };
+  scene.time = { delayedCall: vi.fn(), now: 0 };
   scene.physics = { world: { pause: vi.fn(), resume: vi.fn() } };
   scene.player = mockCar({ x: 400, y: 300 });
   scene.aiCars = { getChildren: () => [] };
@@ -84,7 +104,10 @@ function createScene() {
       this.active = false;
     }),
     setVisible: vi.fn(),
+    texture: { key: 'bonus_chest' },
+    setTexture: vi.fn(),
   };
+  scene.chestShadow = mockShadow();
   return scene;
 }
 
@@ -137,14 +160,16 @@ describe('GameScene', () => {
   });
 
   describe('pause', () => {
-    it('toggles physics, tweens and the overlay', () => {
+    it('toggles physics, tweens, particles and the overlay', () => {
       scene.togglePause();
+      expect(scene.emitters.dust.pause).toHaveBeenCalled();
       expect(scene.phase).toBe(Phase.PAUSED);
       expect(scene.physics.world.pause).toHaveBeenCalled();
       expect(scene.hud.showOverlay).toHaveBeenCalled();
       scene.togglePause();
       expect(scene.phase).toBe(Phase.PLAYING);
       expect(scene.physics.world.resume).toHaveBeenCalled();
+      expect(scene.emitters.dust.resume).toHaveBeenCalled();
       expect(scene.hud.hideOverlay).toHaveBeenCalled();
     });
 
@@ -244,6 +269,8 @@ describe('GameScene', () => {
       scene.handleWorldBounds(ai.body, true, false, false, false);
       expect(scene.score).toBe(SLAM_BONUS);
       expect(ai.getData('flungAt')).toBeNull();
+      expect(scene.emitters.slam.explode).toHaveBeenCalled();
+      expect(scene.cameras.main.flash).toHaveBeenCalledTimes(1);
 
       scene.handleWorldBounds(ai.body, true, false, false, false);
       expect(scene.score).toBe(SLAM_BONUS);
@@ -275,6 +302,8 @@ describe('GameScene', () => {
       expect(scene.chest.active).toBe(false);
       expect(scene.powerupEndsAt).toBe(scene.clock + POWERUP_DURATION_MS);
       expect(scene.isPoweredUp()).toBe(true);
+      expect(scene.emitters.gold.explode).toHaveBeenCalled();
+      expect(scene.chestShadow.setVisible).toHaveBeenLastCalledWith(false);
     });
   });
 
@@ -310,24 +339,98 @@ describe('GameScene', () => {
     }
   });
 
+  describe('dust', () => {
+    it('puffs behind the player only when driving fast, at most once per interval', () => {
+      scene.playerVelocity = { x: 50, y: 0 };
+      scene.kickUpDust();
+      expect(scene.emitters.dust.emitParticleAt).not.toHaveBeenCalled();
+
+      scene.playerVelocity = { x: 220, y: 0 };
+      scene.kickUpDust();
+      scene.kickUpDust();
+      expect(scene.emitters.dust.emitParticleAt).toHaveBeenCalledTimes(1);
+      const [x] = scene.emitters.dust.emitParticleAt.mock.lastCall;
+      expect(x).toBeLessThan(scene.player.x);
+    });
+  });
+
   describe('display state', () => {
-    it('tints the player and fills the bar while turbo lasts', () => {
+    it('shows the turbo car and fills the bar while turbo lasts', () => {
       scene.powerupEndsAt = scene.clock + POWERUP_DURATION_MS / 2;
       scene.updateVisuals();
-      expect(scene.player.setTint).toHaveBeenCalled();
+      expect(scene.player.texture.key).toBe('player_turbo_down_0');
       expect(scene.hud.setPowerup).toHaveBeenCalledWith(0.5);
+      scene.powerupEndsAt = scene.clock;
+      scene.updateVisuals();
+      expect(scene.player.texture.key).toBe('player_down_0');
     });
 
-    it('fades AI cars on scoring cooldown only during a round', () => {
+    it('draws lower cars in front and keeps shadows under the cars', () => {
+      const high = mockCar({ x: 100, y: 100, ai: true });
+      const low = mockCar({ x: 100, y: 500, ai: true });
+      scene.aiCars = { getChildren: () => [high, low] };
+      scene.updateVisuals();
+      expect(low.setDepth.mock.lastCall[0]).toBeGreaterThan(high.setDepth.mock.lastCall[0]);
+      expect(low.getData('shadow').setPosition).toHaveBeenCalledWith(100, expect.any(Number));
+    });
+
+    it('follows the facing set by the simulation, flipping the right-facing art for left', () => {
+      scene.updateFacing(scene.player, { x: -1, y: 0 });
+      scene.updateVisuals();
+      expect(scene.player.texture.key).toBe('player_right_0');
+      expect(scene.player.flipX).toBe(true);
+      scene.updateFacing(scene.player, { x: 1, y: 0 });
+      scene.updateVisuals();
+      expect(scene.player.flipX).toBe(false);
+    });
+
+    it('blinks the chest shadow out together with an expiring chest', () => {
+      scene.spawnChest();
+      scene.clock = scene.chestExpiresAt - 1;
+      scene.updateChest();
+      const visible = scene.chest.setVisible.mock.lastCall[0];
+      expect(scene.chestShadow.setVisible).toHaveBeenLastCalledWith(visible);
+    });
+
+    it('shows AI cars on scoring cooldown in their cooldown look, only during a round', () => {
       const ai = mockCar({ ai: true });
       ai.setData('lastScoredAt', scene.clock);
       scene.aiCars = { getChildren: () => [ai] };
       scene.updateVisuals();
-      expect(ai.setAlpha).toHaveBeenLastCalledWith(expect.any(Number));
-      expect(ai.setAlpha.mock.lastCall[0]).toBeLessThan(1);
+      expect(ai.texture.key).toBe('ai0_cool_down');
       scene.phase = Phase.OVER;
       scene.updateVisuals();
-      expect(ai.setAlpha).toHaveBeenLastCalledWith(1);
+      expect(ai.texture.key).toBe('ai0_down_0');
+    });
+
+    it('flashes a car white right after the player bumps it', () => {
+      const ai = mockCar({ x: 430, y: 300, ai: true });
+      scene.aiCars = { getChildren: () => [ai] };
+      scene.handleCarCollision(scene.player, ai);
+      scene.updateVisuals();
+      expect(ai.texture.key).toBe('car_flash_down');
+      scene.clock += 100;
+      ai.body.velocity = { x: 0, y: 0 };
+      scene.updateVisuals();
+      expect(ai.texture.key).not.toBe('car_flash_down');
+    });
+
+    it('bobs the driver only while the car moves', () => {
+      scene.player.body.velocity = { x: 0, y: 0 };
+      const keys = new Set();
+      for (let i = 0; i < 6; i += 1) {
+        scene.clock += 100;
+        scene.updateVisuals();
+        keys.add(scene.player.texture.key);
+      }
+      expect([...keys]).toEqual(['player_down_0']);
+      scene.player.body.velocity = { x: 0, y: 150 };
+      for (let i = 0; i < 6; i += 1) {
+        scene.clock += 100;
+        scene.updateVisuals();
+        keys.add(scene.player.texture.key);
+      }
+      expect(keys.has('player_down_1')).toBe(true);
     });
   });
 
@@ -368,7 +471,7 @@ describe('GameScene', () => {
     expect(scene.combo).toBe(0);
     expect(scene.phase).toBe(Phase.OVER);
     expect(scene.physics.world.pause).toHaveBeenCalled();
-    expect(scene.hud.showOverlay).toHaveBeenCalledWith('GAME OVER', expect.stringContaining('Score: 7'));
+    expect(scene.hud.showOverlay).toHaveBeenCalledWith('GAME OVER', expect.stringContaining('Score: 7'), expect.any(String));
     expect(scene.time.delayedCall).toHaveBeenCalled();
   });
 });

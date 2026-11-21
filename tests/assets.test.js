@@ -1,168 +1,152 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { 
-  shade,
-  createCanvas,
-  drawCarFacing,
+import {
+  gridToDataUrl,
   createFenceTile,
-  createWoodPlankTile32,
-  createNoiseOverlay32,
-  generatePixelAssets 
+  createFenceCorner,
+  createWoodFloorTile,
+  createNoiseOverlay,
+  createPixelEllipse,
+  createBonusChest,
+  seededRandom,
+  generatePixelAssets,
 } from '../src/utils/assets.js';
+import { carTextureKey } from '../src/utils/carArt.js';
+import {
+  AI_COLORS,
+  ARENA_MARGIN,
+  BURST_COLORS,
+  FLOOR_TILE_WIDTH,
+  NOISE_TILE_SIZE,
+  PIXEL_SCALE,
+  TILE_SIZE,
+} from '../src/config/constants.js';
 
-// Mock canvas and context for testing
-const mockContext = {
-  fillStyle: '',
-  fillRect: vi.fn(),
-  createImageData: vi.fn(),
-  putImageData: vi.fn(),
-  getContext: vi.fn()
-};
+// A fake canvas that records its size and every fillRect, so tests can check what was drawn.
+const canvases = [];
+function fakeCanvas() {
+  const rects = [];
+  const ctx = {
+    fillStyle: '',
+    fillRect: vi.fn((x, y, w, h) => rects.push({ x, y, w, h, color: ctx.fillStyle })),
+    createImageData: vi.fn((w, h) => ({ data: new Uint8ClampedArray(w * h * 4) })),
+    putImageData: vi.fn(),
+  };
+  const canvas = { width: 0, height: 0, ctx, rects, getContext: () => ctx, toDataURL: () => 'data:image/png;base64,x' };
+  canvases.push(canvas);
+  return canvas;
+}
 
-// Mock document.createElement for canvas
 Object.defineProperty(global, 'document', {
-  value: {
-    createElement: vi.fn((tagName) => {
-      if (tagName === 'canvas') {
-        return {
-          width: 0,
-          height: 0,
-          getContext: vi.fn(() => mockContext),
-          toDataURL: vi.fn(() => 'data:image/png;base64,mock-image-data')
-        };
-      }
-      return null;
-    })
-  },
-  writable: true
+  value: { createElement: vi.fn((tag) => (tag === 'canvas' ? fakeCanvas() : null)) },
+  writable: true,
 });
 
-describe('Asset Utilities', () => {
+const lastCanvas = () => canvases[canvases.length - 1];
+
+describe('asset generation', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    canvases.length = 0;
   });
 
-  describe('shade function', () => {
-    it('should lighten a color with positive percentage', () => {
-      const result = shade('#800000', 50); // dark red -> lighter
-      expect(result).toMatch(/^#[0-9a-f]{6}$/i);
-      expect(parseInt(result.slice(1), 16)).toBeGreaterThan(parseInt('800000', 16));
-    });
-
-    it('should darken a color with negative percentage', () => {
-      const result = shade('#ff0000', -50); // red -> darker
-      expect(result).toMatch(/^#[0-9a-f]{6}$/i);
-      expect(parseInt(result.slice(1), 16)).toBeLessThan(parseInt('ff0000', 16));
-    });
-
-    it('should handle edge cases properly', () => {
-      expect(shade('#000000', -100)).toBe('#000000'); // can't get darker than black
-      expect(shade('#ffffff', 100)).toBe('#ffffff'); // can't get lighter than white
-    });
-
-    it('should handle colors without # prefix', () => {
-      const result = shade('ff0000', -50);
-      expect(result).toMatch(/^#[0-9a-f]{6}$/i);
+  it('seededRandom repeats its sequence for the same seed', () => {
+    const a = seededRandom(7);
+    const b = seededRandom(7);
+    const seq = [a(), a(), a()];
+    expect([b(), b(), b()]).toEqual(seq);
+    seq.forEach((v) => {
+      expect(v).toBeGreaterThanOrEqual(0);
+      expect(v).toBeLessThan(1);
     });
   });
 
-  describe('createCanvas function', () => {
-    it('should create a canvas with specified dimensions', () => {
-      const canvas = createCanvas(100, 200);
-      expect(document.createElement).toHaveBeenCalledWith('canvas');
-      expect(canvas.width).toBe(100);
-      expect(canvas.height).toBe(200);
-    });
+  it('gridToDataUrl paints one 1x1 rect per coloured cell and skips empty ones', () => {
+    expect(gridToDataUrl([['#111111', null], [null, '#222222']])).toMatch(/^data:image\/png/);
+    const canvas = lastCanvas();
+    expect([canvas.width, canvas.height]).toEqual([2, 2]);
+    expect(canvas.rects.map((r) => [r.x, r.y, r.w, r.h, r.color])).toEqual([
+      [0, 0, 1, 1, '#111111'],
+      [1, 1, 1, 1, '#222222'],
+    ]);
   });
 
-  describe('drawCarFacing function', () => {
-    it('should create a car sprite with correct dimensions', () => {
-      const result = drawCarFacing('up', '#ff0000', 64);
-      expect(document.createElement).toHaveBeenCalledWith('canvas');
-      expect(result).toBe('data:image/png;base64,mock-image-data');
-    });
-
-    it('should handle all four directions', () => {
-      ['up', 'down', 'left', 'right'].forEach(direction => {
-        const result = drawCarFacing(direction, '#00ff00', 32);
-        expect(result).toBe('data:image/png;base64,mock-image-data');
-      });
-    });
-
-    it('should use default size when not specified', () => {
-      const result = drawCarFacing('up', '#0000ff');
-      expect(result).toBe('data:image/png;base64,mock-image-data');
-    });
+  it.each(['h', 'v'])('fence tile %s is the fence width at art scale', (orientation) => {
+    createFenceTile(orientation);
+    expect(lastCanvas().width).toBe(ARENA_MARGIN / PIXEL_SCALE);
   });
 
-  describe('createFenceTile function', () => {
-    it('should create a 16x16 fence tile', () => {
-      const result = createFenceTile();
-      expect(document.createElement).toHaveBeenCalledWith('canvas');
-      expect(result).toBe('data:image/png;base64,mock-image-data');
-    });
+  it('fence corner matches the fence tiles', () => {
+    createFenceCorner();
+    expect(lastCanvas().width).toBe(ARENA_MARGIN / PIXEL_SCALE);
   });
 
-  describe('createWoodPlankTile32 function', () => {
-    it('should create a tile with correct dimensions', () => {
-      const result = createWoodPlankTile32();
-      expect(document.createElement).toHaveBeenCalledWith('canvas');
-      expect(result).toBe('data:image/png;base64,mock-image-data');
-    });
+  it('floor tile has the floor dimensions and is identical on every load', () => {
+    createWoodFloorTile();
+    const first = lastCanvas();
+    createWoodFloorTile();
+    const second = lastCanvas();
+    expect([first.width, first.height]).toEqual([FLOOR_TILE_WIDTH, TILE_SIZE]);
+    expect(second.rects).toEqual(first.rects);
   });
 
-  describe('createNoiseOverlay32 function', () => {
-    beforeEach(() => {
-      mockContext.createImageData.mockReturnValue({
-        data: new Uint8ClampedArray(32 * 32 * 4) // RGBA for 32x32 image
-      });
-    });
-
-    it('should create noise overlay with default alpha', () => {
-      const result = createNoiseOverlay32();
-      expect(mockContext.createImageData).toHaveBeenCalledWith(32, 32);
-      expect(mockContext.putImageData).toHaveBeenCalled();
-      expect(result).toBe('data:image/png;base64,mock-image-data');
-    });
-
-    it('should create noise overlay with custom alpha', () => {
-      const result = createNoiseOverlay32(0.5);
-      expect(mockContext.createImageData).toHaveBeenCalledWith(32, 32);
-      expect(result).toBe('data:image/png;base64,mock-image-data');
-    });
+  it('noise overlay is deterministic and uses its own tile size', () => {
+    createNoiseOverlay();
+    const first = lastCanvas();
+    createNoiseOverlay();
+    const second = lastCanvas();
+    expect(first.ctx.createImageData).toHaveBeenCalledWith(NOISE_TILE_SIZE, NOISE_TILE_SIZE);
+    expect(second.ctx.putImageData.mock.calls[0][0].data).toEqual(first.ctx.putImageData.mock.calls[0][0].data);
   });
 
-  describe('generatePixelAssets function', () => {
-    it('should generate all required assets', () => {
+  it('pixel ellipse draws one centred row per width', () => {
+    createPixelEllipse([2, 6, 2], '#000');
+    const canvas = lastCanvas();
+    expect([canvas.width, canvas.height]).toEqual([6, 3]);
+    expect(canvas.rects.map((r) => [r.x, r.y, r.w])).toEqual([[2, 0, 2], [0, 1, 6], [2, 2, 2]]);
+  });
+
+  it('chest frames differ only in the glint', () => {
+    createBonusChest(false);
+    const plain = lastCanvas().rects;
+    createBonusChest(true);
+    const glint = lastCanvas().rects;
+    expect(glint.length).toBe(plain.length);
+    expect(glint).not.toEqual(plain);
+  });
+
+  describe('generatePixelAssets', () => {
+    const facings = ['up', 'down', 'left', 'right'];
+
+    it('has a texture for every car look the scene can ask for', () => {
       const assets = generatePixelAssets();
-      
-      // Check player sprites
-      ['up', 'down', 'left', 'right'].forEach(direction => {
-        expect(assets).toHaveProperty(`player_${direction}`);
-        expect(assets[`player_${direction}`]).toBe('data:image/png;base64,mock-image-data');
+      const looks = [{}, { frame: 1 }, { flash: true }];
+      const keys = [];
+      facings.forEach((facing) => {
+        [...looks, { turbo: true }, { turbo: true, frame: 1 }].forEach((look) =>
+          keys.push(carTextureKey('player', facing, look)),
+        );
+        AI_COLORS.forEach((_c, i) =>
+          [...looks, { cool: true }].forEach((look) => keys.push(carTextureKey(`ai${i}`, facing, look))),
+        );
       });
-
-      // Check AI sprites (10 colors × 4 directions)
-      for (let i = 0; i < 10; i++) {
-        ['up', 'down', 'left', 'right'].forEach(direction => {
-          expect(assets).toHaveProperty(`ai${i}_${direction}`);
-          expect(assets[`ai${i}_${direction}`]).toBe('data:image/png;base64,mock-image-data');
-        });
-      }
-
-      // Check environment assets
-      expect(assets).toHaveProperty('fence_tile');
-      expect(assets).toHaveProperty('floor_wood');
-      expect(assets).toHaveProperty('floor_noise');
-      expect(assets).toHaveProperty('bonus_chest');
+      expect(keys.filter((key) => !(key in assets))).toEqual([]);
     });
 
-    it('should return an object with expected number of assets', () => {
+    it('has the arena, chest and effect textures', () => {
       const assets = generatePixelAssets();
-      const expectedCount = 
-        4 +        // player sprites (4 directions)
-        (10 * 4) + // AI sprites (10 colors × 4 directions)
-        4;         // environment assets (including bonus_chest)
-      expect(Object.keys(assets)).toHaveLength(expectedCount);
+      [
+        'fence_h',
+        'fence_v',
+        'fence_corner',
+        'floor_wood',
+        'floor_noise',
+        'bonus_chest',
+        'bonus_chest_glint',
+        'car_shadow',
+        'chest_shadow',
+        ...Object.keys(BURST_COLORS).map((kind) => `px_${kind}`),
+        'px_dust',
+        'pop_ring',
+      ].forEach((key) => expect(assets).toHaveProperty(key));
     });
   });
 });

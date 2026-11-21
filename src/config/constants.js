@@ -1,3 +1,5 @@
+import { colorInt } from '../utils/color.js';
+
 // === GAME ===
 export const GAME_WIDTH = 800;
 export const GAME_HEIGHT = 600;
@@ -16,9 +18,15 @@ export const PLAYER_DRAG = 2.0; // exponential velocity decay per second
 export const PLAYER_WALL_BOUNCE = 0.5;
 
 // === CAR BODY ===
-export const CAR_PIXEL_SIZE = 64; // generated sprite size per side
-export const CAR_BODY_RADIUS = 24; // physics circle radius
-export const CAR_BODY_OFFSET = (CAR_PIXEL_SIZE - CAR_BODY_RADIUS * 2) / 2; // centres the circle
+// Art is drawn in art pixels and shown at PIXEL_SCALE world pixels each.
+export const PIXEL_SCALE = 2;
+export const CAR_PIXEL_SIZE = 32; // car texture size, in art pixels
+export const CAR_BODY_RADIUS = 24; // physics circle radius, in world pixels
+// Arcade's setCircle takes texture pixels; this centres the circle in the car texture.
+export const CAR_BODY_OFFSET = (CAR_PIXEL_SIZE - (CAR_BODY_RADIUS * 2) / PIXEL_SCALE) / 2;
+// Shadows sit just below the art's bottom edge: the car bumper and the chest base.
+export const CAR_SHADOW_OFFSET_Y = 10 * PIXEL_SCALE;
+export const CHEST_SHADOW_OFFSET_Y = 7 * PIXEL_SCALE;
 
 // === BUMPS ===
 export const RECOIL_FORCE = 180; // minimum speed an AI car is flung at by the player
@@ -27,6 +35,9 @@ export const PLAYER_KNOCKBACK_RATIO = 0.6; // player bounces back with this shar
 export const AI_MIN_BUMP_SPEED = 90; // AI cars never stall after bumping each other
 export const AI_MIN_WALL_SPEED = 140; // AI cars always leave a wall at least this fast
 export const SHAKE_COOLDOWN_MS = 500;
+export const SLAM_FLASH_COOLDOWN_MS = 300;
+export const DUST_MIN_SPEED = 180; // the player kicks up dust above this speed
+export const DUST_INTERVAL_MS = 60;
 export const SOUND_COOLDOWN_MS = 200;
 
 // === AI ===
@@ -60,35 +71,73 @@ export const POWERUP_SPEED_MULTIPLIER = 1.5;
 export const POWERUP_RECOIL_MULTIPLIER = 1.8;
 
 // === VISUAL ASSETS ===
-export const TILE_SIZE = 32; // wood/noise tile size
+// Arena textures are in art pixels and shown at PIXEL_SCALE.
+export const TILE_SIZE = 32; // floor tile height
+export const FLOOR_TILE_WIDTH = 64; // wider than tall so plank joints can stagger
+export const NOISE_TILE_SIZE = 24; // doesn't divide the floor tile, so the repeats don't line up
 export const FLOOR_NOISE_GENERATION_ALPHA = 0.2; // per-pixel alpha when generating noise texture
 export const FLOOR_NOISE_OVERLAY_ALPHA = 0.35; // alpha applied when layering noise sprite
 
 // === RENDER DEPTHS ===
-export const DEPTH = Object.freeze({ FENCE: 1, CHEST: 1.5, CARS: 2, EFFECTS: 50, HUD: 100, OVERLAY: 300 });
+// Cars get CARS + y / height so lower cars draw in front.
+export const DEPTH = Object.freeze({
+  SHADOW: 0.5,
+  DUST: 0.6,
+  FENCE: 1,
+  CHEST: 1.5,
+  CARS: 2,
+  EFFECTS: 50,
+  HUD: 100,
+  BANNER: 250,
+  OVERLAY: 300,
+});
+
+// === PALETTE ===
+// Shared by the arena art, the UI and the cars, so the browns stay one family.
+export const WOOD_OUTLINE = '#5a3e2b'; // plank seams, fence and UI outlines, text stroke, lights off
+export const WOOD_LIGHT = '#c89b67'; // fence posts and panel borders
+export const FLOOR_PLANK = '#7e5a3f';
+export const FLOOR_SHADE = '#6f4f3b'; // cars that can't score fade toward this
 
 // === UI ===
 export const UI_FONT_FAMILY = '"Press Start 2P", monospace';
 export const UI_TEXT_COLOR = '#ffe6a7';
-export const UI_TEXT_STROKE = '#5a3e2b';
+export const UI_BRIGHT_TEXT = '#fff5d6';
+export const UI_TEXT_STROKE = WOOD_OUTLINE;
 export const UI_URGENT_COLOR = '#ff6b5a';
+export const UI_TITLE_COLOR = '#ffd34d';
+export const UI_OUTLINE = colorInt(WOOD_OUTLINE);
+export const UI_PANEL_BORDER = colorInt(WOOD_LIGHT);
+export const UI_PANEL_FILL = 0x3b2a20;
 
 // === COLORS ===
+// Toned-down hues that sit with the wooden arena; the player is the only saturated red.
+// No orange or brown: they sink into the floor.
 export const AI_COLORS = [
-  '#4b79d6', // royal blue
-  '#22cc44', // bright green
-  '#ffdd33', // bright yellow
-  '#9933ff', // deep purple
-  '#ff3399', // hot pink
-  '#00dddd', // cyan
-  '#ff8833', // bright orange
-  '#2244aa', // navy blue
-  '#88ff44', // lime green
-  '#8b5a3c', // brown
+  '#5a7fc0', // slate
+  '#86c0d4', // sky
+  '#3f9c90', // teal
+  '#86a84e', // moss
+  '#4c8058', // pine
+  '#8f5fa8', // plum
+  '#aa98dc', // lavender
+  '#d9809f', // rose
+  '#c9a23c', // mustard
+  '#d6ccb6', // bone
 ];
 
-export const PLAYER_COLOR = '#ff2222'; // bright red
-export const POWERUP_COLOR = 0xffdd44; // turbo tint, bar and label
-export const SLAM_COLOR = 0xff9a4d;
-export const SPARK_COLOR = 0xfff1a8;
-export const CHEST_BURST_COLOR = 0xffd700;
+export const PLAYER_COLOR = '#e5443b';
+export const POWERUP_COLOR = 0xffdd44; // turbo bar and label
+export const TURBO_COLOR = '#ffcf3f'; // player car body while turbo is on
+export const TURBO_OUTLINE = '#ff7b29'; // a hot glow; anything pale merges with the driver's helmet
+
+// Particle colours for impact bursts, baked into textures (Canvas can't tint particles).
+export const BURST_COLORS = Object.freeze({
+  spark: '#fff1a8',
+  slam: '#ff9a4d',
+  gold: '#ffd700',
+  white: '#ffffff',
+});
+export const SLAM_COLOR = BURST_COLORS.slam; // the slam label matches its particles
+export const DUST_COLOR = '#a27a53';
+

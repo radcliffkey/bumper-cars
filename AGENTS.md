@@ -27,7 +27,9 @@ src/
   ui/Hud.js          score, timer, combo, turbo bar, overlay, floating text
   sprites/Car.js     car sprite with a circular body confined to the arena
   utils/
-    assets.js        canvas-drawn textures as data URLs
+    assets.js        canvas-drawn textures as data URLs (arena, chest, shadows, particles; every key)
+    carArt.js        car pixel art: ASCII templates, colour ramps, drivers, texture keys; pure
+    color.js         hex/RGB/HSL helpers shared by the art, the HUD and the constants
     audio.js         Web Audio synthesized sound effects
     highScore.js     best score in localStorage, failure-tolerant
 tests/               one file per module; setup.vitest.js mocks the 'phaser' module
@@ -37,7 +39,9 @@ tests/               one file per module; setup.vitest.js mocks the 'phaser' mod
 
 - **Phases.** `GameScene.phase` is `ready` (title screen; AI cars roam), `playing`, `paused` or `over`. Each key press goes through `handleCommand`, which switches on the phase.
 - **One clock.** `GameScene.clock` counts milliseconds of unpaused play and advances only in `simulate()`. Every gameplay timer is a deadline on it (`roundEndsAt`, `nextChestAt`, `powerupEndsAt`, per-car `lastScoredAt`/`dirChangeAt`), so pausing needs no bookkeeping. Don't use `this.time.now` or Phaser timers for gameplay.
-- **Simulation vs. presentation.** `update()` runs `simulate()` only in `ready`/`playing`, and `updateVisuals()` in every phase. Tint, turbo bar, combo label and cooldown fading are derived from state there, so phase changes alter state (e.g. `powerupEndsAt = clock`), never the visuals directly.
+- **Simulation vs. presentation.** `update()` runs `simulate()` only in `ready`/`playing`. `updateVisuals()` runs on the scene's `postupdate` event, after Arcade has moved the sprites (in `update()` shadows and depth order would trail a frame), in every phase. Car looks (texture, flip, depth, shadow), the turbo bar, the combo label and the HUD animation (`hud.update`, on scene time) are derived from state there, so phase changes alter state (e.g. `powerupEndsAt = clock`), never the visuals directly.
+- **Car looks are textures, not tints.** `carTextureKey()` (in `carArt.js`) picks `<base>_<facing>_<bobFrame>`, `player_turbo_…`, `ai<n>_cool_<facing>` (can't score yet) or `car_flash_<facing>` (just hit); `generatePixelAssets` builds its keys through the same function. Left-facing cars use the right-facing art with `setFlipX`. The game runs on `Phaser.AUTO` and supports the (deprecated) Canvas fallback, which can't tint sprites or particles, so colour variants are baked into textures and there is one particle emitter per colour (`scene.emitters`, from `BURST_COLORS`).
+- **Textures are generated once.** `preload` runs again on every `scene.restart()`; it returns early when the textures already exist.
 - **Scoring.** A hit counts only if the player drove into the car (`SCORE_MIN_CLOSING_SPEED`) and that car is off its cooldown. Hits within `COMBO_WINDOW_MS` raise the multiplier. A flung car that hits the fence within `SLAM_WINDOW_MS` adds a slam bonus.
 - **Tuning** lives entirely in `constants.js`. Change numbers there, not inline.
 
@@ -54,7 +58,9 @@ tests/               one file per module; setup.vitest.js mocks the 'phaser' mod
 ## Conventions
 
 - Keep `src/logic/` free of Phaser so it stays unit-testable. Put new math or rules there and call it from the scene.
-- **No static asset files.** Draw images in `assets.js` and synthesize sounds in `audio.js`.
+- **No static asset files.** Draw images in `assets.js` / `carArt.js` and synthesize sounds in `audio.js`.
+- **One pixel size.** Art is drawn at 1 art pixel and shown at `PIXEL_SCALE` (2): sprites with `setScale`, tile sprites with `setTileScale`. Keep new art on that grid; mixing in 1px detail looks off next to it. Arcade's `setCircle` takes texture pixels, so set the scale first and divide world radii by `PIXEL_SCALE`.
+- **Pixel art palette.** Cars get a 4-tone hue-shifted ramp from `colorRamp()`; keep new colours muted next to the wooden arena, with the player as the only saturated car.
 - ES modules, semicolons, `const` by default, max line length 120 (lint warns). Comment why, not what; document only non-obvious functions.
 - Commit messages: short lowercase imperative summary (`add sound effects`, `update deps`), with an optional body.
 

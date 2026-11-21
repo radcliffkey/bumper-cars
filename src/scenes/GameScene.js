@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { createCarSprite } from '../sprites/Car.js';
-import { Hud, cssColor } from '../ui/Hud.js';
+import { Hud } from '../ui/Hud.js';
+import { cssColor } from '../utils/color.js';
 import { generatePixelAssets } from '../utils/assets.js';
 import { loadBestScore, recordScore } from '../utils/highScore.js';
 import {
@@ -14,6 +15,7 @@ import {
   playStart,
   resumeAudio,
 } from '../utils/audio.js';
+import { carFlipped, carTextureKey } from '../utils/carArt.js';
 import {
   blinkOn,
   comboExpired,
@@ -64,8 +66,13 @@ import {
   DEPTH,
   POWERUP_COLOR,
   SLAM_COLOR,
-  SPARK_COLOR,
-  CHEST_BURST_COLOR,
+  BURST_COLORS,
+  SLAM_FLASH_COOLDOWN_MS,
+  DUST_MIN_SPEED,
+  DUST_INTERVAL_MS,
+  CAR_SHADOW_OFFSET_Y,
+  CHEST_SHADOW_OFFSET_Y,
+  PIXEL_SCALE,
 } from '../config/constants.js';
 
 export const Phase = Object.freeze({
@@ -77,8 +84,17 @@ export const Phase = Object.freeze({
 
 const RESTART_DELAY_MS = 600; // ignore keys held from the last moments of a round
 const RESTART_KEYS = new Set(['Space', 'Enter', 'NumpadEnter', 'KeyR', 'Pointer']);
-const TURBO_BLINK_MS = 1000; // the tint blinks during the last second of turbo
-const COOLDOWN_ALPHA = 0.55;
+const TURBO_BLINK_MS = 1000; // the turbo look blinks during the last second
+const HIT_FLASH_MS = 80;
+const BOB_FRAME_MS = 160; // drivers bob while their car moves
+const BOB_MIN_SPEED = 20;
+// Particle textures are 2x2 art pixels; scaling between whole art-pixel sizes keeps them on the grid.
+const BURST_PARTICLES = {
+  speed: { min: 60, max: 170 },
+  lifespan: 380,
+  scale: { start: PIXEL_SCALE, end: PIXEL_SCALE / 2 },
+  alpha: { start: 1, end: 0.3 },
+};
 
 const TITLE_TEXT = [
   'Bump cars to score',
@@ -86,9 +102,8 @@ const TITLE_TEXT = [
   'Fling cars into the fence: SLAM!',
   'Grab chests for turbo',
   '',
-  'Arrows / WASD: drive   P: pause',
-  '',
-  'Press any key to start',
+  'Drive: arrows or WASD',
+  'Pause: P, restart: R',
 ].join('\n');
 
 export class GameScene extends Phaser.Scene {
@@ -122,6 +137,8 @@ export class GameScene extends Phaser.Scene {
   }
 
   preload() {
+    // preload runs again on every restart; the textures are already there by then.
+    if (this.textures.exists('floor_wood')) return;
     const assets = generatePixelAssets();
     Object.entries(assets).forEach(([key, dataUrl]) => this.load.image(key, dataUrl));
   }
@@ -131,6 +148,7 @@ export class GameScene extends Phaser.Scene {
     this.createArena();
     this.createCars();
     this.createChest();
+    this.createEffects();
     this.hud = new Hud(this);
     this.hud.setTimeLeft(ROUND_DURATION_MS);
     this.createInput();
@@ -139,46 +157,74 @@ export class GameScene extends Phaser.Scene {
     this.physics.add.collider(this.aiCars, this.aiCars, this.handleCarCollision, undefined, this);
     this.physics.add.overlap(this.player, this.chest, this.collectChest, undefined, this);
     this.physics.world.on('worldbounds', this.handleWorldBounds, this);
+    // Visuals follow the physics step, which moves the sprites after update() has run;
+    // otherwise shadows and depth order trail the cars by a frame.
+    this.events.on('postupdate', this.updateVisuals, this);
+    this.events.once('shutdown', () => this.events.off('postupdate', this.updateVisuals, this));
 
     if (data.skipTitle) {
       this.startRound();
     } else {
-      this.hud.showOverlay('BUMPER CARS', `${TITLE_TEXT}\n\nBest: ${loadBestScore()}`);
+      this.hud.showOverlay('BUMPER CARS', `${TITLE_TEXT}\n\nBest: ${loadBestScore()}`, 'Press any key to start');
     }
   }
 
   createArena() {
     const { width, height } = this.scale;
-    this.add.tileSprite(0, 0, width, height, 'floor_wood').setOrigin(0, 0);
+    // Arena art is drawn at 1px and shown at PIXEL_SCALE, the same pixel size as the cars.
+    this.add.tileSprite(0, 0, width, height, 'floor_wood').setOrigin(0, 0).setTileScale(PIXEL_SCALE);
     this.add
       .tileSprite(0, 0, width, height, 'floor_noise')
       .setOrigin(0, 0)
+      .setTileScale(PIXEL_SCALE)
       .setBlendMode(Phaser.BlendModes.MULTIPLY)
       .setAlpha(FLOOR_NOISE_OVERLAY_ALPHA);
 
     const m = ARENA_MARGIN;
+    // A soft shadow cast by the top and left fences onto the floor.
+    this.add.rectangle(m, m, width - m * 2, 4, 0x000000, 0.25).setOrigin(0, 0).setDepth(DEPTH.FENCE);
+    this.add.rectangle(m, m + 4, 4, height - m * 2 - 4, 0x000000, 0.25).setOrigin(0, 0).setDepth(DEPTH.FENCE);
     [
-      [0, 0, width, m],
-      [0, height - m, width, m],
-      [0, 0, m, height],
-      [width - m, 0, m, height],
-    ].forEach(([x, y, w, h]) => this.add.tileSprite(x, y, w, h, 'fence_tile').setOrigin(0, 0).setDepth(DEPTH.FENCE));
+      [0, 0, width, m, 'fence_h'],
+      [0, height - m, width, m, 'fence_h'],
+      [0, 0, m, height, 'fence_v'],
+      [width - m, 0, m, height, 'fence_v'],
+    ].forEach(([x, y, w, h, key]) =>
+      this.add.tileSprite(x, y, w, h, key).setOrigin(0, 0).setTileScale(PIXEL_SCALE).setDepth(DEPTH.FENCE),
+    );
+    [
+      [0, 0],
+      [width - m, 0],
+      [0, height - m],
+      [width - m, height - m],
+    ].forEach(([x, y]) =>
+      this.add.image(x, y, 'fence_corner').setOrigin(0, 0).setScale(PIXEL_SCALE).setDepth(DEPTH.FENCE),
+    );
 
     this.physics.world.setBounds(m, m, width - m * 2, height - m * 2);
   }
 
   createCars() {
     const { width, height } = this.scale;
-    this.player = createCarSprite(this, width / 2, height / 2, 'player_down', PLAYER_WALL_BOUNCE);
-    this.player.setData('facing', 'down');
+    this.player = createCarSprite(this, width / 2, height / 2, 'player_down_0', PLAYER_WALL_BOUNCE);
+    this.player.setData({ facing: 'down', bobOffset: 0, flashUntil: 0, shadow: this.addShadow('car_shadow') });
 
     // A plain group: an Arcade physics group would overwrite each car's body settings.
     this.aiCars = this.add.group();
     for (let i = 0; i < AI_COUNT; i += 1) {
       const spawn = this.findSpawnPoint(CAR_BODY_RADIUS);
       const base = `ai${i % AI_COLORS.length}`;
-      const ai = createCarSprite(this, spawn.x, spawn.y, `${base}_down`, 1);
-      ai.setData({ ai: true, base, facing: 'down', lastScoredAt: null, flungAt: null });
+      const ai = createCarSprite(this, spawn.x, spawn.y, `${base}_down_0`, 1);
+      ai.setData({
+        ai: true,
+        base,
+        facing: 'down',
+        lastScoredAt: null,
+        flungAt: null,
+        bobOffset: (i + 1) * 70,
+        flashUntil: 0,
+        shadow: this.addShadow('car_shadow'),
+      });
       this.aiCars.add(ai);
       this.resetAiTracking(ai);
       this.driveRandomly(ai);
@@ -187,10 +233,33 @@ export class GameScene extends Phaser.Scene {
 
   createChest() {
     this.chest = this.physics.add.sprite(0, 0, 'bonus_chest');
-    this.chest.setCircle(CHEST_BODY_RADIUS, 0, 0);
+    this.chest.setScale(PIXEL_SCALE);
+    this.chest.setCircle(CHEST_BODY_RADIUS / PIXEL_SCALE, 0, 0);
     this.chest.setImmovable(true);
     this.chest.setDepth(DEPTH.CHEST);
     this.chest.disableBody(true, true);
+    this.chestShadow = this.addShadow('chest_shadow').setVisible(false);
+  }
+
+  addShadow(texture) {
+    return this.add.image(0, 0, texture).setScale(PIXEL_SCALE).setDepth(DEPTH.SHADOW);
+  }
+
+  /** Pooled particle emitters, one per baked colour (Canvas can't tint particles). */
+  createEffects() {
+    const emitter = (texture, depth, config) =>
+      this.add.particles(0, 0, texture, { emitting: false, ...config }).setDepth(depth);
+    this.emitters = {
+      ...Object.fromEntries(
+        Object.keys(BURST_COLORS).map((kind) => [kind, emitter(`px_${kind}`, DEPTH.EFFECTS, BURST_PARTICLES)]),
+      ),
+      dust: emitter('px_dust', DEPTH.DUST, {
+        speed: { min: 8, max: 28 },
+        lifespan: 450,
+        scale: { start: PIXEL_SCALE, end: PIXEL_SCALE / 2 },
+        alpha: { start: 0.7, end: 0 },
+      }),
+    };
   }
 
   createInput() {
@@ -237,11 +306,13 @@ export class GameScene extends Phaser.Scene {
       this.phase = Phase.PAUSED;
       this.physics.world.pause();
       this.tweens.pauseAll();
-      this.hud.showOverlay('PAUSED', 'P: resume   R: restart');
+      Object.values(this.emitters).forEach((e) => e.pause());
+      this.hud.showOverlay('PAUSED', 'P: resume\nR: restart');
     } else if (this.phase === Phase.PAUSED) {
       this.phase = Phase.PLAYING;
       this.physics.world.resume();
       this.tweens.resumeAll();
+      Object.values(this.emitters).forEach((e) => e.resume());
       this.hud.hideOverlay();
     }
   }
@@ -255,7 +326,7 @@ export class GameScene extends Phaser.Scene {
 
     const isBest = recordScore(this.score);
     const bestLine = isBest ? 'NEW BEST!' : `Best: ${loadBestScore()}`;
-    this.hud.showOverlay('GAME OVER', `Score: ${this.score}\n${bestLine}\n\nSpace / Enter: play again`);
+    this.hud.showOverlay('GAME OVER', `Score: ${this.score}\n${bestLine}`, 'Space / Enter: play again');
     this.time.delayedCall(RESTART_DELAY_MS, () => {
       this.canRestart = true;
     });
@@ -266,7 +337,6 @@ export class GameScene extends Phaser.Scene {
     if (this.phase === Phase.READY || this.phase === Phase.PLAYING) {
       this.simulate(Math.min(delta, MAX_FRAME_DT_MS));
     }
-    this.updateVisuals();
   }
 
   simulate(dtMs) {
@@ -291,20 +361,48 @@ export class GameScene extends Phaser.Scene {
     if (remaining <= 0) this.endRound();
   }
 
-  /** Display state derived from game state; runs in every phase so nothing needs a manual reset. */
+  /**
+   * Display state derived from game state. Runs after every physics step, in every phase,
+   * so nothing needs a manual reset.
+   */
   updateVisuals() {
     const turboLeft = Math.max(0, this.powerupEndsAt - this.clock);
-    const tinted = turboLeft > 0 && (turboLeft >= TURBO_BLINK_MS || blinkOn(turboLeft, 100));
-    if (tinted) this.player.setTint(POWERUP_COLOR);
-    else this.player.clearTint();
+    const turbo = turboLeft > 0 && (turboLeft >= TURBO_BLINK_MS || blinkOn(turboLeft, 100));
+    this.dressCar(this.player, 'player', { turbo });
     this.hud.setPowerup(turboLeft / POWERUP_DURATION_MS);
     this.hud.setCombo(this.combo);
 
     const showCooldowns = this.phase === Phase.PLAYING || this.phase === Phase.PAUSED;
     this.aiCars.getChildren().forEach((ai) => {
       const onCooldown = !cooldownElapsed(this.clock, ai.getData('lastScoredAt'), SCORING_COOLDOWN_MS);
-      ai.setAlpha(showCooldowns && onCooldown ? COOLDOWN_ALPHA : 1);
+      this.dressCar(ai, ai.getData('base'), { cool: showCooldowns && onCooldown });
     });
+
+    if (this.chest.active) {
+      const frame = blinkOn(this.clock, 400) ? 'bonus_chest' : 'bonus_chest_glint';
+      if (this.chest.texture.key !== frame) this.chest.setTexture(frame);
+    }
+
+    // Fade the HUD plates while a car drives under them; UI blinking runs on scene time so
+    // prompts keep blinking while the game is paused or over.
+    this.hud.update(this.time.now, [this.player, ...this.aiCars.getChildren()]);
+  }
+
+  /**
+   * The car's texture for its facing, bob frame, hit flash and `look` (turbo or cooldown),
+   * its depth by y (lower cars in front) and its shadow underneath.
+   */
+  dressCar(car, base, look = {}) {
+    const { x: vx, y: vy } = car.body.velocity;
+    const moving = Math.hypot(vx, vy) > BOB_MIN_SPEED;
+    const frame = moving && !blinkOn(this.clock + car.getData('bobOffset'), BOB_FRAME_MS) ? 1 : 0;
+    const flash = this.clock < car.getData('flashUntil');
+    const facing = car.getData('facing');
+    const key = carTextureKey(base, facing, { ...look, frame, flash });
+    if (car.texture.key !== key) car.setTexture(key);
+    car.setFlipX(carFlipped(facing));
+    car.setDepth(DEPTH.CARS + car.y / this.scale.height);
+    car.getData('shadow').setPosition(car.x, car.y + CAR_SHADOW_OFFSET_Y);
   }
 
   isPoweredUp() {
@@ -328,7 +426,21 @@ export class GameScene extends Phaser.Scene {
       drag: PLAYER_DRAG,
     });
     this.player.setVelocity(this.playerVelocity.x, this.playerVelocity.y);
-    this.faceCar(this.player, input, 'player');
+    this.updateFacing(this.player, input);
+    if (acceptInput) this.kickUpDust();
+  }
+
+  /** Dust puffs behind the player while driving fast. */
+  kickUpDust() {
+    const { x: vx, y: vy } = this.playerVelocity;
+    const speed = Math.hypot(vx, vy);
+    if (speed < DUST_MIN_SPEED || !this.cooledDown('dust', DUST_INTERVAL_MS)) return;
+    const behind = CAR_BODY_RADIUS * 0.8;
+    this.emitters.dust.emitParticleAt(
+      this.player.x - (vx / speed) * behind,
+      this.player.y + CAR_SHADOW_OFFSET_Y - (vy / speed) * behind,
+      1,
+    );
   }
 
   readDriveInput() {
@@ -347,17 +459,14 @@ export class GameScene extends Phaser.Scene {
         const v = cruise(ai.body.velocity, dtSec, AI_DRAG, AI_BASE_SPEED);
         ai.setVelocity(v.x, v.y);
       }
-      this.faceCar(ai, ai.body.velocity, ai.getData('base'));
+      this.updateFacing(ai, ai.body.velocity);
       this.checkStuck(ai);
     });
   }
 
-  faceCar(car, direction, textureBase) {
+  updateFacing(car, direction) {
     const facing = facingOf(direction, car.getData('facing'));
-    if (facing && facing !== car.getData('facing')) {
-      car.setData('facing', facing);
-      car.setTexture(`${textureBase}_${facing}`);
-    }
+    if (facing) car.setData('facing', facing);
   }
 
   driveRandomly(ai) {
@@ -383,7 +492,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   explodeAndRespawn(ai) {
-    this.burst(ai.x, ai.y, 0xffffff, 0, 30);
+    this.burst(ai.x, ai.y, 'white', 10, true);
     playExplosion();
     const spawn = this.findSpawnPoint(CAR_BODY_RADIUS, ai);
     ai.body.reset(spawn.x, spawn.y);
@@ -420,6 +529,7 @@ export class GameScene extends Phaser.Scene {
     ai.setVelocity(result.ai.x, result.ai.y);
     player.setVelocity(result.player.x, result.player.y);
     this.playerVelocity = result.player;
+    ai.setData('flashUntil', this.clock + HIT_FLASH_MS);
     // Let the fling play out instead of the AI immediately picking a new heading.
     ai.setData('dirChangeAt', Math.max(ai.getData('dirChangeAt'), this.clock + AI_BUMP_STEER_DELAY_MS));
 
@@ -437,7 +547,7 @@ export class GameScene extends Phaser.Scene {
     this.combo = nextCombo(this.combo, this.clock, this.lastScoreAt);
     const contactX = (player.x + ai.x) / 2;
     const contactY = (player.y + ai.y) / 2;
-    this.burst(contactX, contactY, SPARK_COLOR, Math.round(4 + 2 * impact), 0);
+    this.burst(contactX, contactY, 'spark', Math.round(4 + 2 * impact));
     this.addPoints(this.combo, ai.x, ai.y - 24, `+${this.combo}`);
     playScore(this.combo);
   }
@@ -467,8 +577,11 @@ export class GameScene extends Phaser.Scene {
     const flungAt = car.getData('flungAt');
     if (this.phase === Phase.PLAYING && flungAt != null && this.clock - flungAt <= SLAM_WINDOW_MS) {
       car.setData('flungAt', null);
-      this.addPoints(SLAM_BONUS, car.x, car.y - 24, `SLAM! +${SLAM_BONUS}`, cssColor(SLAM_COLOR));
-      this.burst(car.x - normal.x * CAR_BODY_RADIUS, car.y - normal.y * CAR_BODY_RADIUS, SLAM_COLOR, 8, 0);
+      this.addPoints(SLAM_BONUS, car.x, car.y - 24, `SLAM! +${SLAM_BONUS}`, SLAM_COLOR);
+      this.burst(car.x - normal.x * CAR_BODY_RADIUS, car.y - normal.y * CAR_BODY_RADIUS, 'slam', 12);
+      this.cameras.main.shake(160, 0.012);
+      this.lastAt.shake = this.clock;
+      if (this.cooledDown('flash', SLAM_FLASH_COOLDOWN_MS)) this.cameras.main.flash(90, 255, 236, 200);
       playWallHit();
     }
   }
@@ -480,12 +593,17 @@ export class GameScene extends Phaser.Scene {
     }
     const left = this.chestExpiresAt - this.clock;
     if (left <= 0) this.hideChest();
-    else this.chest.setVisible(left >= CHEST_BLINK_MS || blinkOn(left, 120));
+    else {
+      const visible = left >= CHEST_BLINK_MS || blinkOn(left, 120);
+      this.chest.setVisible(visible);
+      this.chestShadow.setVisible(visible);
+    }
   }
 
   spawnChest() {
     const { x, y } = this.findSpawnPoint(CHEST_SPAWN_INSET);
     this.chest.enableBody(true, x, y, true, true);
+    this.chestShadow.setPosition(x, y + CHEST_SHADOW_OFFSET_Y).setVisible(true);
     this.chestExpiresAt = this.clock + CHEST_LIFETIME_MS;
     this.tweens.add({ targets: this.chest, y: y - 5, duration: 1000, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
   }
@@ -493,44 +611,32 @@ export class GameScene extends Phaser.Scene {
   hideChest() {
     this.tweens.killTweensOf(this.chest);
     this.chest.disableBody(true, true);
+    this.chestShadow.setVisible(false);
     this.nextChestAt = this.clock + CHEST_SPAWN_INTERVAL_MS;
   }
 
   collectChest() {
     if (!this.chest.active || this.phase !== Phase.PLAYING) return;
     const { x, y } = this.chest;
-    this.burst(x, y, CHEST_BURST_COLOR, 8, 20);
+    this.burst(x, y, 'gold', 14, true);
     this.hideChest();
     this.powerupEndsAt = this.clock + POWERUP_DURATION_MS;
     this.hud.floatText(x, y - 20, 'TURBO!', cssColor(POWERUP_COLOR));
     playPowerup();
   }
 
-  /** Square pixel sparks flying out from a point plus an optional expanding flash. */
-  burst(x, y, color, sparks, flashRadius) {
-    for (let i = 0; i < sparks; i += 1) {
-      const angle = (Math.PI * 2 * i) / sparks;
-      const spark = this.add.rectangle(x, y, 4, 4, color).setDepth(DEPTH.EFFECTS);
-      this.tweens.add({
-        targets: spark,
-        x: x + Math.cos(angle) * 36,
-        y: y + Math.sin(angle) * 36,
-        alpha: 0,
-        duration: 400,
-        ease: 'Cubic.easeOut',
-        onComplete: () => spark.destroy(),
-      });
-    }
-    if (flashRadius > 0) {
-      const flash = this.add.circle(x, y, flashRadius, color, 0.8).setDepth(DEPTH.EFFECTS);
-      this.tweens.add({
-        targets: flash,
-        alpha: 0,
-        scale: 2.5,
-        duration: 350,
-        ease: 'Cubic.easeOut',
-        onComplete: () => flash.destroy(),
-      });
-    }
+  /** Pixel sparks of the named emitter flying out from a point, plus an optional pixel ring "pop". */
+  burst(x, y, kind, count, ring = false) {
+    this.emitters[kind].explode(count, x, y);
+    if (!ring) return;
+    const pop = this.add.image(x, y, 'pop_ring').setDepth(DEPTH.EFFECTS).setScale(PIXEL_SCALE);
+    this.tweens.add({
+      targets: pop,
+      scale: PIXEL_SCALE * 2,
+      alpha: 0,
+      duration: 300,
+      ease: 'Cubic.easeOut',
+      onComplete: () => pop.destroy(),
+    });
   }
 }
