@@ -1,194 +1,127 @@
-// Simple synthesized sound effects using Web Audio API
-// No external assets required.
+// Synthesized sound effects using the Web Audio API; no audio files needed.
 
 let ctx = null;
 let masterGain = null;
+let noiseBuffer = null;
 
-function initAudio() {
-  if (typeof window === 'undefined') return; // Node/Test environment check
+function getContext() {
+  if (typeof window === 'undefined') return null;
   if (!ctx) {
     const AudioContext = window.AudioContext || window.webkitAudioContext;
-    if (AudioContext) {
-      ctx = new AudioContext();
-      masterGain = ctx.createGain();
-      masterGain.gain.value = 0.25; // Master volume
-      masterGain.connect(ctx.destination);
-    }
+    if (!AudioContext) return null;
+    ctx = new AudioContext();
+    masterGain = ctx.createGain();
+    masterGain.gain.value = 0.25;
+    masterGain.connect(ctx.destination);
   }
-  // Try to resume if suspended (browser autoplay policy)
-  if (ctx && ctx.state === 'suspended') {
-    ctx.resume().catch(() => {});
-  }
+  resumeAudio();
+  return ctx;
 }
 
+/** Browsers start audio suspended until a user gesture; call this from one. */
 export function resumeAudio() {
   if (ctx && ctx.state === 'suspended') {
     ctx.resume().catch(() => {});
   }
 }
 
-export function playBump() {
-  initAudio();
-  if (!ctx) return;
-
-  const t = ctx.currentTime;
-  const osc = ctx.createOscillator();
-  const gain = ctx.createGain();
-
-  osc.type = 'triangle';
-  osc.frequency.setValueAtTime(120, t);
-  osc.frequency.exponentialRampToValueAtTime(40, t + 0.15);
-
-  // Stronger bump: increased gain and slightly longer duration
-  gain.gain.setValueAtTime(2.0, t);
-  gain.gain.exponentialRampToValueAtTime(0.01, t + 0.15);
-
-  osc.connect(gain);
-  gain.connect(masterGain);
-
+/**
+ * Plays one oscillator note sweeping from `from` to `to` Hz.
+ * `out` lets a caller insert a filter between the note and the master gain.
+ */
+function tone({ type, from, to = from, duration, gain, delay = 0, linear = false, out }) {
+  const audio = getContext();
+  if (!audio) return null;
+  const t = audio.currentTime + delay;
+  const osc = audio.createOscillator();
+  const amp = audio.createGain();
+  osc.type = type;
+  osc.frequency.setValueAtTime(from, t);
+  if (to !== from) {
+    if (linear) osc.frequency.linearRampToValueAtTime(to, t + duration);
+    else osc.frequency.exponentialRampToValueAtTime(to, t + duration);
+  }
+  amp.gain.setValueAtTime(gain, t);
+  amp.gain.exponentialRampToValueAtTime(0.01, t + duration);
+  osc.connect(amp);
+  amp.connect(out ?? masterGain);
   osc.start(t);
-  osc.stop(t + 0.15);
+  osc.stop(t + duration);
+  return osc;
+}
+
+export function playBump() {
+  tone({ type: 'triangle', from: 120, to: 40, duration: 0.15, gain: 2.0 });
 }
 
 export function playWallHit() {
-  initAudio();
-  if (!ctx) return;
-
-  const t = ctx.currentTime;
-  const osc = ctx.createOscillator();
-  const gain = ctx.createGain();
-
-  // Duller, shorter sound for walls
-  osc.type = 'square';
-  osc.frequency.setValueAtTime(80, t);
-  osc.frequency.exponentialRampToValueAtTime(20, t + 0.08);
-
-  // Low pass filter to make it sound like a dull thud
-  const filter = ctx.createBiquadFilter();
+  const audio = getContext();
+  if (!audio) return;
+  const filter = audio.createBiquadFilter();
   filter.type = 'lowpass';
   filter.frequency.value = 400;
-
-  gain.gain.setValueAtTime(0.8, t);
-  gain.gain.exponentialRampToValueAtTime(0.01, t + 0.08);
-
-  osc.connect(filter);
-  filter.connect(gain);
-  gain.connect(masterGain);
-
-  osc.start(t);
-  osc.stop(t + 0.08);
+  filter.connect(masterGain);
+  tone({ type: 'square', from: 80, to: 20, duration: 0.08, gain: 0.8, out: filter });
 }
 
-export function playScore() {
-  initAudio();
-  if (!ctx) return;
-
-  const t = ctx.currentTime;
-  
-  // Double tone "ba-ding"
-  const osc1 = ctx.createOscillator();
-  const gain1 = ctx.createGain();
-  
-  osc1.type = 'sine';
-  osc1.frequency.setValueAtTime(523.25, t); // C5
-  osc1.frequency.setValueAtTime(1046.50, t + 0.1); // C6
-
-  gain1.gain.setValueAtTime(0.1, t);
-  gain1.gain.setValueAtTime(0.1, t + 0.1);
-  gain1.gain.exponentialRampToValueAtTime(0.01, t + 0.4);
-
-  osc1.connect(gain1);
-  gain1.connect(masterGain);
-
-  osc1.start(t);
-  osc1.stop(t + 0.4);
+/** "Ba-ding", pitched up a little for every combo step. */
+export function playScore(combo = 1) {
+  const pitch = 1 + 0.12 * (combo - 1);
+  tone({ type: 'sine', from: 523.25 * pitch, duration: 0.1, gain: 0.12 });
+  tone({ type: 'sine', from: 1046.5 * pitch, duration: 0.3, gain: 0.12, delay: 0.1 });
 }
 
 export function playPowerup() {
-  initAudio();
-  if (!ctx) return;
-
+  const osc = tone({ type: 'sine', from: 300, to: 800, duration: 0.3, gain: 0.75, linear: true });
+  if (!osc) return;
   const t = ctx.currentTime;
-  const osc = ctx.createOscillator();
-  const gain = ctx.createGain();
-
-  osc.type = 'sine';
-  osc.frequency.setValueAtTime(300, t);
-  osc.frequency.linearRampToValueAtTime(800, t + 0.3);
-  
-  // Tremolo
   const tremolo = ctx.createOscillator();
+  const depth = ctx.createGain();
   tremolo.frequency.value = 20;
-  const tremoloGain = ctx.createGain();
-  tremoloGain.gain.value = 200;
-  tremolo.connect(tremoloGain);
-  tremoloGain.connect(osc.frequency);
+  depth.gain.value = 200;
+  tremolo.connect(depth);
+  depth.connect(osc.frequency);
   tremolo.start(t);
   tremolo.stop(t + 0.3);
+}
 
-  gain.gain.setValueAtTime(0.75, t);
-  gain.gain.linearRampToValueAtTime(0, t + 0.3);
+export function playTick() {
+  tone({ type: 'square', from: 1200, duration: 0.04, gain: 0.15 });
+}
 
-  osc.connect(gain);
-  gain.connect(masterGain);
-
-  osc.start(t);
-  osc.stop(t + 0.3);
+export function playStart() {
+  [523.25, 659.25, 783.99].forEach((freq, i) => {
+    tone({ type: 'triangle', from: freq, duration: 0.15, gain: 0.5, delay: i * 0.09 });
+  });
 }
 
 export function playGameOver() {
-  initAudio();
-  if (!ctx) return;
-
-  const t = ctx.currentTime;
-  const osc = ctx.createOscillator();
-  const gain = ctx.createGain();
-
-  osc.type = 'triangle';
-  osc.frequency.setValueAtTime(300, t);
-  osc.frequency.exponentialRampToValueAtTime(50, t + 1.0);
-
-  gain.gain.setValueAtTime(0.5, t);
-  gain.gain.linearRampToValueAtTime(0, t + 1.0);
-
-  osc.connect(gain);
-  gain.connect(masterGain);
-
-  osc.start(t);
-  osc.stop(t + 1.0);
+  tone({ type: 'triangle', from: 300, to: 50, duration: 1.0, gain: 0.5 });
 }
 
 export function playExplosion() {
-  initAudio();
-  if (!ctx) return;
-
-  const t = ctx.currentTime;
-  
-  // Noise buffer for explosion
-  const bufferSize = ctx.sampleRate * 0.5; // 0.5 seconds
-  const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
-  const data = buffer.getChannelData(0);
-  for (let i = 0; i < bufferSize; i++) {
-    data[i] = Math.random() * 2 - 1;
+  const audio = getContext();
+  if (!audio) return;
+  const t = audio.currentTime;
+  if (!noiseBuffer) {
+    const length = audio.sampleRate * 0.5;
+    noiseBuffer = audio.createBuffer(1, length, audio.sampleRate);
+    const data = noiseBuffer.getChannelData(0);
+    for (let i = 0; i < length; i += 1) data[i] = Math.random() * 2 - 1;
   }
 
-  const noise = ctx.createBufferSource();
-  noise.buffer = buffer;
-
-  // Lowpass filter to make it sound like a distant or muffled explosion
-  const filter = ctx.createBiquadFilter();
+  const noise = audio.createBufferSource();
+  noise.buffer = noiseBuffer;
+  const filter = audio.createBiquadFilter();
   filter.type = 'lowpass';
   filter.frequency.setValueAtTime(1000, t);
   filter.frequency.exponentialRampToValueAtTime(100, t + 0.5);
-
-  const gain = ctx.createGain();
-  gain.gain.setValueAtTime(1.5, t);
-  gain.gain.exponentialRampToValueAtTime(0.01, t + 0.5);
+  const amp = audio.createGain();
+  amp.gain.setValueAtTime(1.5, t);
+  amp.gain.exponentialRampToValueAtTime(0.01, t + 0.5);
 
   noise.connect(filter);
-  filter.connect(gain);
-  gain.connect(masterGain);
-
+  filter.connect(amp);
+  amp.connect(masterGain);
   noise.start(t);
 }
-
