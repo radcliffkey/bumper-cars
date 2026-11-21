@@ -58,7 +58,7 @@ tests/               one file per module; setup.vitest.js mocks the 'phaser' mod
 ## Conventions
 
 - Keep `src/logic/` free of Phaser so it stays unit-testable. Put new math or rules there and call it from the scene.
-- **No static asset files.** Draw images in `assets.js` / `carArt.js` and synthesize sounds in `audio.js`.
+- **No static asset files.** Draw images in `assets.js` / `carArt.js` and synthesize sounds in `audio.js`. (`docs/` holds only the README screenshots; the game never loads them. Retake them after visual changes.)
 - **One pixel size.** Art is drawn at 1 art pixel and shown at `PIXEL_SCALE` (2): sprites with `setScale`, tile sprites with `setTileScale`. Keep new art on that grid; mixing in 1px detail looks off next to it. Arcade's `setCircle` takes texture pixels, so set the scale first and divide world radii by `PIXEL_SCALE`.
 - **Pixel art palette.** Cars get a 4-tone hue-shifted ramp from `colorRamp()`; keep new colours muted next to the wooden arena, with the player as the only saturated car.
 - ES modules, semicolons, `const` by default, max line length 120 (lint warns). Comment why, not what; document only non-obvious functions.

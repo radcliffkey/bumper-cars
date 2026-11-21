@@ -52,7 +52,7 @@ export const AI_STUCK_TIME_MS = 1000; // time staying within tolerance before re
 export const AI_RESPAWN_CLEARANCE_PX = 56; // min distance from other cars when respawning
 
 // === SCORING ===
-export const SCORING_COOLDOWN_MS = 2000; // per AI car; cars on cooldown are drawn faded
+export const SCORING_COOLDOWN_MS = 2000; // per AI car; cars on cooldown are drawn greyed out
 export const COMBO_WINDOW_MS = 2500; // score again within this to grow the combo
 export const COMBO_MAX = 5;
 export const SCORE_MIN_CLOSING_SPEED = 60; // the player must actually drive into a car to score
